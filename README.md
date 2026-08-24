@@ -1,6 +1,6 @@
 # PayFlow Hub
 
-Hub de pagamentos instantâneos — microsserviços orientados a eventos, cobrindo cash-in, cash-out, notificação outbound por webhook, trilha de auditoria e backoffice operacional.
+Escopo reduzido de um hub de pagamentos instantâneos — microsserviços orientados a eventos, cobrindo cash-in, cash-out, notificação outbound por webhook, trilha de auditoria e backoffice operacional.
 
 Este repositório documenta o ciclo de vida completo do software com IA integrada ao processo: do PRD à arquitetura, do planejamento rastreável à implementação, revisão de código e retrospectiva. Domínio, nomes e dados são fictícios.
 
