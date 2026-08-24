@@ -1,58 +1,58 @@
-# Phase 9: Balanceamento de Provedores e Operação do Circuit Breaker
+# Phase 9: Provider Balancing and Circuit Breaker Operations
 
 **Duration**: ~4 days (30 milestones @ 1h each)
-**Dependencies**: Phase 5 (propagação Redis), Phase 7 (eventos de CB), Phase 8 (read model consultável)
+**Dependencies**: Phase 5 (Redis propagation), Phase 7 (CB events), Phase 8 (queryable read model)
 **Status**: 🚧 TODO
 
 ## Goal
 
-Entregar o controle operacional de runtime do Hub: visibilidade de provedores, ajuste manual de pesos de balanceamento com propagação em tempo real, e operação do circuit breaker (estado, thresholds, kick e reinstate manuais).
+Deliver Hub runtime operational control: provider visibility, manual balancing weight adjustment with real-time propagation, and circuit breaker operations (state, thresholds, manual kick and reinstate).
 
-Entregas principais:
-- `GET /api/providers` (lista por tenant), `GET /api/providers/:id/kicks` (histórico a partir de `circuit_breaker_events`) e `GET /api/providers/:id/performance` (conversão e volumetria calculadas on-the-fly em V1).
-- `GET /api/balancing/:tenant_id` e `PUT /api/balancing/:tenant_id` (pesos e modo `MANUAL`), gravando em `routing_configs` e propagando `routing:weights:{tenant_id}:{flow_type}` pelo serviço da Fase 5.
-- Producer Kafka de `balancing.recalibrated.v1` quando o operador ajusta pesos manualmente.
-- `GET /api/circuit-breaker/:tenant_id` lendo `cb:state:*` e `cb:halfopen:*` do Redis Core (somente leitura — essas chaves são escritas pelo core).
-- `PUT /api/circuit-breaker/:tenant_id/config` gravando em `circuit_breaker_configs` (`circuit_breaker_configs:{tenant_id}:{provider_id}:{flow_type}` como chave oficial, nunca `tenant:config`).
-- `POST /api/circuit-breaker/:tenant_id/kick` e `POST /api/circuit-breaker/:tenant_id/reinstate` (body: `provider_id`, `flow_type`).
+Main deliverables:
+- `GET /api/providers` (list by tenant), `GET /api/providers/:id/kicks` (history from `circuit_breaker_events`), and `GET /api/providers/:id/performance` (conversion and volume calculated on-the-fly in V1).
+- `GET /api/balancing/:tenant_id` and `PUT /api/balancing/:tenant_id` (weights and `MANUAL` mode), writing to `routing_configs` and propagating `routing:weights:{tenant_id}:{flow_type}` via Phase 5 service.
+- Kafka producer for `balancing.recalibrated.v1` when operator adjusts weights manually.
+- `GET /api/circuit-breaker/:tenant_id` reading `cb:state:*` and `cb:halfopen:*` from Redis Core (read-only — these keys are written by core).
+- `PUT /api/circuit-breaker/:tenant_id/config` writing to `circuit_breaker_configs` (`circuit_breaker_configs:{tenant_id}:{provider_id}:{flow_type}` as official key, never `tenant:config`).
+- `POST /api/circuit-breaker/:tenant_id/kick` and `POST /api/circuit-breaker/:tenant_id/reinstate` (body: `provider_id`, `flow_type`).
 
 ## Phase Acceptance Criteria
 
-- Todos os 9 endpoints exigem ADMIN ou OPERATIONS e negam FINANCE, COMPLIANCE e SUPPORT — negativos cobertos por e2e conforme a matriz da §6.
-- `PUT /api/balancing/:tenant_id` valida que a soma dos pesos e o conjunto de providers são consistentes com os providers ativos do tenant, rejeitando com `DomainError` tipado nos casos inválidos (peso negativo, provider inexistente, provider inativo, flow_type inválido) — um teste por caso.
-- Ajuste de pesos grava no `core-db`, propaga `routing:weights:*` no Redis e publica `balancing.recalibrated.v1` com o envelope do `docs/contract/contract.md` — verificado por teste de integração contra Redpanda.
-- Falha de Redis no ajuste de pesos cai no `redis_propagation_outbox` sem perder a escrita no `core-db`, e o resync da Fase 5 reconstrói a chave — teste dedicado.
-- `GET /api/circuit-breaker/:tenant_id` nunca escreve em `cb:state:*`/`cb:halfopen:*`; o teste prova que a operação é read-only sobre essas chaves.
-- Kick e reinstate manuais geram registro em `backoffice_audit_log` com `KICK`/`REINSTATE`, `actor_*` e `flow_type`, e são idempotentes (kick sobre provider já kickado não duplica estado) — cobertos por teste.
-- `GET /api/providers/:id/performance` calcula conversão e volumetria a partir do read model com resultado determinístico sobre massa fixa de teste, incluindo o caso de zero transações no período (sem divisão por zero).
-- Cobertura ≥ 90% em `BalancingService` e `CircuitBreakerService`; `scripts/pre-commit.sh` verde e `docs/contract/contract.md` atualizado no mesmo PR.
+- All 9 endpoints require ADMIN or OPERATIONS and deny FINANCE, COMPLIANCE, and SUPPORT — negatives covered by e2e per §6 matrix.
+- `PUT /api/balancing/:tenant_id` validates weight sum and provider set are consistent with tenant's active providers, rejecting with typed `DomainError` in invalid cases (negative weight, nonexistent provider, inactive provider, invalid flow_type) — one test per case.
+- Weight adjustment writes to `core-db`, propagates `routing:weights:*` on Redis, and publishes `balancing.recalibrated.v1` with `docs/contract/contract.md` envelope — verified by integration test against Redpanda.
+- Redis failure on weight adjustment falls into `redis_propagation_outbox` without losing `core-db` write, and Phase 5 resync rebuilds the key — dedicated test.
+- `GET /api/circuit-breaker/:tenant_id` never writes to `cb:state:*`/`cb:halfopen:*`; test proves operation is read-only on those keys.
+- Manual kick and reinstate generate record in `backoffice_audit_log` with `KICK`/`REINSTATE`, `actor_*`, and `flow_type`, and are idempotent (kick on already kicked provider does not duplicate state) — covered by test.
+- `GET /api/providers/:id/performance` calculates conversion and volume from read model with deterministic result over fixed test data, including zero transactions in period (no division by zero).
+- Coverage ≥ 90% in `BalancingService` and `CircuitBreakerService`; `scripts/pre-commit.sh` green and `docs/contract/contract.md` updated in the same PR.
 
 ## Milestones
 
 <!-- Milestones appended by /wiz-milestones -->
 
-### P09M01: Mapear entities de routing e circuit breaker no core-db e criar o módulo `balancing/`
+### P09M01: Map routing and circuit breaker entities on core-db and create `balancing/` module
 
 **Status:** 🚧 TODO
 **ID:** P09M01
 
 **Goal**
 
-Mapear as entities TypeORM de `routing_configs` e `circuit_breaker_configs` na conexão `core` e criar o módulo `balancing/` no padrão Hexagonal Light da §9 do PRD, deixando os tokens de DI prontos para os milestones seguintes.
+Map TypeORM entities for `routing_configs` and `circuit_breaker_configs` on `core` connection and create `balancing/` module in PRD §9 Hexagonal Light pattern, leaving DI tokens ready for subsequent milestones.
 
 **Acceptance Criteria**
 
-- [ ] `src/balancing/entities/routing-config.entity.ts` mapeia `routing_configs` (`tenant_id`, `provider_id`, `flow_type`, `position`, `weight`, `mode`) na conexão `core`
-- [ ] `src/providers/entities/circuit-breaker-config.entity.ts` mapeia `circuit_breaker_configs` (`tenant_id`, `provider_id`, `flow_type`, `consecutive_threshold`, `suspension_minutes`) na conexão `core`
-- [ ] `src/balancing/balancing.module.ts` criado com `interfaces/`, `controllers/`, `services/`, `repositories/` e `dto/` conforme o padrão por módulo da §9
-- [ ] Tokens `IBalancingService` e `IBalancingRepository` registrados via `provide`/`useClass`; nenhuma injeção por classe concreta
-- [ ] `providers.module.ts` estendido com os tokens `ICircuitBreakerService` e `ICBEventRepository`
-- [ ] Repositories acessam as entities via `@InjectRepository(Entity, 'core')` e a aplicação sobe sem erro de metadata
-- [ ] `scripts/pre-commit.sh` verde
+- [ ] `src/balancing/entities/routing-config.entity.ts` maps `routing_configs` (`tenant_id`, `provider_id`, `flow_type`, `position`, `weight`, `mode`) on `core` connection
+- [ ] `src/providers/entities/circuit-breaker-config.entity.ts` maps `circuit_breaker_configs` (`tenant_id`, `provider_id`, `flow_type`, `consecutive_threshold`, `suspension_minutes`) on `core` connection
+- [ ] `src/balancing/balancing.module.ts` created with `interfaces/`, `controllers/`, `services/`, `repositories/`, and `dto/` per §9 module pattern
+- [ ] Tokens `IBalancingService` and `IBalancingRepository` registered via `provide`/`useClass`; no concrete class injection
+- [ ] `providers.module.ts` extended with `ICircuitBreakerService` and `ICBEventRepository` tokens
+- [ ] Repositories access entities via `@InjectRepository(Entity, 'core')` and app boots without metadata error
+- [ ] `scripts/pre-commit.sh` green
 
 ---
 
-### P09M02: Implementar a consulta de provedores por tenant no repositório
+### P09M02: Implement provider query by tenant in repository
 
 **Status:** 🚧 TODO
 
@@ -60,100 +60,100 @@ Mapear as entities TypeORM de `routing_configs` e `circuit_breaker_configs` na c
 
 **Goal**
 
-Implementar no repositório de providers a consulta que alimenta `GET /api/providers`, lendo `provider_configs` no `core-db` já restrita aos tenants visíveis pelo usuário autenticado.
+Implement in provider repository the query powering `GET /api/providers`, reading `provider_configs` on `core-db` already restricted to tenants visible to authenticated user.
 
 **Acceptance Criteria**
 
-- [ ] Método `findByTenant(tenantIds, filtros)` em `ProviderConfigRepository` lê `provider_configs` na conexão `core` e retorna `tenant_id`, `provider_id`, `base_url` e `active`
-- [ ] Filtro opcional `tenant_id`; sem filtro, retorna apenas os tenants de `user.tenant_ids` (ou todos os tenants da organization quando `tenant_ids` está vazio)
-- [ ] Provider de tenant fora do escopo do usuário nunca aparece no resultado
-- [ ] Registros com `deleted_at` preenchido são excluídos por padrão
-- [ ] Nenhuma credencial de provider é lida ou retornada — apenas metadados
-- [ ] Testes unitários com repositório mockado cobrem escopo total, escopo restrito e resultado vazio
-- [ ] `scripts/pre-commit.sh` verde
+- [ ] Method `findByTenant(tenantIds, filters)` in `ProviderConfigRepository` reads `provider_configs` on `core` connection and returns `tenant_id`, `provider_id`, `base_url`, and `active`
+- [ ] Optional `tenant_id` filter; without filter, returns only tenants in `user.tenant_ids` (or all organization tenants when `tenant_ids` is empty)
+- [ ] Provider from tenant outside user scope never appears in result
+- [ ] Records with `deleted_at` set are excluded by default
+- [ ] No provider credential is read or returned — metadata only
+- [ ] Unit tests with mocked repository cover full scope, restricted scope, and empty result
+- [ ] `scripts/pre-commit.sh` green
 
 ---
 
-### P09M03: Expor `GET /api/providers`
+### P09M03: Expose `GET /api/providers`
 
 **Status:** 🚧 TODO
 **ID:** P09M03
 
 **Goal**
 
-Publicar o endpoint de listagem de provedores por tenant, restrito a ADMIN e OPERATIONS, com paginação e escopo multi-tenant aplicados.
+Publish provider listing endpoint by tenant, restricted to ADMIN and OPERATIONS, with pagination and multi-tenant scope applied.
 
 **Acceptance Criteria**
 
-- [ ] `ProviderController` expõe `GET /api/providers` com `@Roles('ADMIN', 'OPERATIONS')`
-- [ ] Query DTO valida `tenant_id` (UUID opcional) e paginação `page`/`limit` (default 20, max 100) reusando o `PaginationDto` da Fase 2
-- [ ] Resposta usa `PaginatedResponseDto` e expõe `tenant_id`, `provider_id`, `base_url` e `active`
-- [ ] `tenant_id` fora de `user.tenant_ids` retorna 403 via `DomainError` tipado
-- [ ] Controller injeta apenas `IProviderService` por token, nunca o repositório
-- [ ] e2e positivo para ADMIN e OPERATIONS, e 401 sem JWT
-- [ ] `scripts/pre-commit.sh` verde
+- [ ] `ProviderController` exposes `GET /api/providers` with `@Roles('ADMIN', 'OPERATIONS')`
+- [ ] Query DTO validates optional `tenant_id` (UUID) and pagination `page`/`limit` (default 20, max 100) reusing Phase 2 `PaginationDto`
+- [ ] Response uses `PaginatedResponseDto` and exposes `tenant_id`, `provider_id`, `base_url`, and `active`
+- [ ] `tenant_id` outside `user.tenant_ids` returns 403 via typed `DomainError`
+- [ ] Controller injects only `IProviderService` by token, never repository
+- [ ] Positive e2e for ADMIN and OPERATIONS, and 401 without JWT
+- [ ] `scripts/pre-commit.sh` green
 
 ---
 
-### P09M04: Implementar a consulta de histórico de kicks em `circuit_breaker_events`
+### P09M04: Implement kick history query on `circuit_breaker_events`
 
 **Status:** 🚧 TODO
 **ID:** P09M04
 
 **Goal**
 
-Implementar no `CBEventRepository` a consulta paginada do histórico de kicks e recoveries de um provedor a partir da tabela `circuit_breaker_events` do `backoffice-db`, projetada na Fase 7.
+Implement in `CBEventRepository` paginated query of provider kick and recovery history from `circuit_breaker_events` table in `backoffice-db`, projected in Phase 7.
 
 **Acceptance Criteria**
 
-- [ ] `CBEventRepository.findKicksByProvider(providerId, tenantIds, filtros)` consulta `circuit_breaker_events` na conexão primária
-- [ ] Filtros `tenant_id`, `flow_type`, `date_from` e `date_to` suportados, com paginação `page`/`limit`
-- [ ] Resultado ordenado por `occurred_at` decrescente, incluindo tipo do evento (kick/recovery), `provider_id`, `flow_type`, motivo e timestamp
-- [ ] Query respeita a RLS do `backoffice-db` (`SET LOCAL app.current_tenant_id`) e o escopo de `user.tenant_ids`
-- [ ] Índice de suporte por (`provider_id`, `occurred_at`) criado por migration caso ainda não exista
-- [ ] Testes de integração sobre massa fixa cobrem filtro por período e provider sem nenhum evento
-- [ ] `scripts/pre-commit.sh` verde
+- [ ] `CBEventRepository.findKicksByProvider(providerId, tenantIds, filters)` queries `circuit_breaker_events` on primary connection
+- [ ] Filters `tenant_id`, `flow_type`, `date_from`, and `date_to` supported, with `page`/`limit` pagination
+- [ ] Result ordered by descending `occurred_at`, including event type (kick/recovery), `provider_id`, `flow_type`, reason, and timestamp
+- [ ] Query respects `backoffice-db` RLS (`SET LOCAL app.current_tenant_id`) and `user.tenant_ids` scope
+- [ ] Support index on (`provider_id`, `occurred_at`) created by migration if not yet present
+- [ ] Integration tests on fixed data cover period filter and provider with no events
+- [ ] `scripts/pre-commit.sh` green
 
 ---
 
-### P09M05: Expor `GET /api/providers/:id/kicks`
+### P09M05: Expose `GET /api/providers/:id/kicks`
 
 **Status:** 🚧 TODO
 **ID:** P09M05
 
 **Goal**
 
-Publicar o endpoint de histórico de kicks do provedor para ADMIN e OPERATIONS, com validação de período e escopo por tenant.
+Publish provider kick history endpoint for ADMIN and OPERATIONS, with period validation and tenant scope.
 
 **Acceptance Criteria**
 
-- [ ] `GET /api/providers/:id/kicks` exposto no `ProviderController` com `@Roles('ADMIN', 'OPERATIONS')`
-- [ ] `:id` resolvido como `provider_id` existente para algum tenant no escopo do usuário; inexistente retorna `PROVIDER_NOT_FOUND` (404)
-- [ ] Query DTO valida `tenant_id`, `flow_type` (`CASHIN`|`CASHOUT`), `date_from`, `date_to`, `page` e `limit`
-- [ ] Intervalo de datas invertido é rejeitado com `DomainError` tipado (400)
-- [ ] Resposta paginada, ordenada do evento mais recente para o mais antigo
-- [ ] e2e cobre ADMIN, OPERATIONS, provider sem kicks e provider de tenant fora do escopo (403)
-- [ ] `scripts/pre-commit.sh` verde
+- [ ] `GET /api/providers/:id/kicks` exposed on `ProviderController` with `@Roles('ADMIN', 'OPERATIONS')`
+- [ ] `:id` resolved as `provider_id` existing for some tenant in user scope; nonexistent returns `PROVIDER_NOT_FOUND` (404)
+- [ ] Query DTO validates `tenant_id`, `flow_type` (`CASHIN`|`CASHOUT`), `date_from`, `date_to`, `page`, and `limit`
+- [ ] Inverted date range rejected with typed `DomainError` (400)
+- [ ] Paginated response, ordered from most recent to oldest event
+- [ ] E2e covers ADMIN, OPERATIONS, provider with no kicks, and provider from tenant outside scope (403)
+- [ ] `scripts/pre-commit.sh` green
 
 ---
 
-### P09M06: Implementar o cálculo de conversão e volumetria sobre o read model
+### P09M06: Implement conversion and volume calculation on read model
 
 **Status:** 🚧 TODO
 **ID:** P09M06
 
 **Goal**
 
-Implementar no `ProviderService` o cálculo on-the-fly de conversão e volumetria por provedor a partir de `cashin_transactions` e `cashout_transactions`, tratando o período sem transações sem divisão por zero.
+Implement in `ProviderService` on-the-fly conversion and volume calculation per provider from `cashin_transactions` and `cashout_transactions`, handling period with no transactions without division by zero.
 
 **Acceptance Criteria**
 
-- [ ] Método `getPerformance(providerId, tenantIds, periodo)` agrega contagem total, aprovadas, falhas e soma de valores por `flow_type`
-- [ ] Taxa de conversão calculada como aprovadas/total, arredondada com precisão fixa e documentada (2 casas decimais)
-- [ ] Período com zero transações retorna conversão `0` e volumetria zerada, sem exceção, sem divisão por zero e sem `NaN`/`Infinity`
-- [ ] Agregação executada em SQL (`COUNT`/`SUM` com `GROUP BY`), não em memória sobre o conjunto completo de linhas
-- [ ] Query restrita ao `provider_id` informado e aos tenants do escopo do usuário
-- [ ] Testes unitários cobrem total > 0, total = 0 e cenário só com transações falhas
-- [ ] `scripts/pre-commit.sh` verde
+- [ ] Method `getPerformance(providerId, tenantIds, period)` aggregates total count, approved, failures, and value sum by `flow_type`
+- [ ] Conversion rate calculated as approved/total, rounded with fixed documented precision (2 decimal places)
+- [ ] Period with zero transactions returns conversion `0` and zero volume, without exception, division by zero, or `NaN`/`Infinity`
+- [ ] Aggregation executed in SQL (`COUNT`/`SUM` with `GROUP BY`), not in memory over full row set
+- [ ] Query restricted to given `provider_id` and user scope tenants
+- [ ] Unit tests cover total > 0, total = 0, and scenario with failed transactions only
+- [ ] `scripts/pre-commit.sh` green
 
 ---

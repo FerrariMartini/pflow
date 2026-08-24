@@ -1,41 +1,41 @@
-# CI/CD — pipeline e critérios de qualidade
+# CI/CD — pipeline and quality criteria
 
-## Estágios do pipeline (todo serviço)
+## Pipeline stages (every service)
 
 ```
-lint → build → test unitário → test de integração/e2e → scan de segurança → build de imagem → deploy (dev → staging → prod)
+lint → build → unit test → integration/e2e test → security scan → image build → deploy (dev → staging → prod)
 ```
 
-Cada estágio é um **gate**: falha em qualquer um bloqueia o avanço para o próximo. Não existe "merge com CI vermelho e conserta depois" — se o gate falhou, o PR não é elegível para merge.
+Each stage is a **gate**: failure at any one blocks advancement to the next. There is no "merge with red CI and fix later" — if the gate failed, the PR is not eligible for merge.
 
-## Critérios por estágio
+## Criteria per stage
 
-### 1. Lint / análise estática
-- **Critério de aceite**: zero erros. Warning é aceitável para itens já rastreados como débito técnico explícito; novo código não pode introduzir warning novo sem justificativa no PR.
-- Node/TS: ESLint + Prettier (`npm run lint`). Go: `golangci-lint` com regra de arquitetura customizada barrando import de infraestrutura dentro de `internal/domain` (ver `docs/technical/guidelines/dependency-injection.md`).
+### 1. Lint / static analysis
+- **Acceptance criterion**: zero errors. Warnings are acceptable for items already tracked as explicit technical debt; new code cannot introduce a new warning without justification in the PR.
+- Node/TS: ESLint + Prettier (`npm run lint`). Go: `golangci-lint` with custom architecture rule blocking infrastructure imports inside `internal/domain` (see `docs/technical/guidelines/dependency-injection.md`).
 
 ### 2. Build
-- **Critério de aceite**: build reprodutível a partir de um checkout limpo, sem dependência de estado local da máquina do desenvolvedor (nada de "funciona na minha máquina").
+- **Acceptance criterion**: reproducible build from a clean checkout, with no dependency on the developer machine's local state (no "works on my machine").
 
-### 3. Testes unitários
-- **Critério de aceite**: cobertura mínima de 80% em `internal/domain`/`internal/usecase` (Go) e em `src/modules/*/[!.]*.service.ts` (Node) — regra de negócio, não boilerplate de framework. Cobertura de linha em código de infraestrutura (adapters, controllers finos) não é gate, é indicador.
-- Todo `DomainError` novo precisa de teste cobrindo o caminho que o dispara (ver `docs/technical/guidelines/error-handling.md`).
+### 3. Unit tests
+- **Acceptance criterion**: minimum 80% coverage in `internal/domain`/`internal/usecase` (Go) and in `src/modules/*/[!.]*.service.ts` (Node) — business rules, not framework boilerplate. Line coverage in infrastructure code (adapters, thin controllers) is not a gate, it is an indicator.
+- Every new `DomainError` needs a test covering the path that triggers it (see `docs/technical/guidelines/error-handling.md`).
 
-### 4. Testes de integração / e2e
-- **Critério de aceite**: suíte e2e sobe o serviço completo (sem mock do próprio serviço) contra dependências reais ou containerizadas (Postgres/Kafka via `docker-compose` em CI); serviços com contrato de evento têm teste de contrato validando schema publicado/consumido.
+### 4. Integration / e2e tests
+- **Acceptance criterion**: e2e suite brings up the full service (without mocking the service itself) against real or containerized dependencies (Postgres/Kafka via `docker-compose` in CI); services with event contracts have contract tests validating published/consumed schema.
 
-### 5. Scan de segurança
-- **Critério de aceite**: zero vulnerabilidade `critical`/`high` sem exceção aprovada explicitamente (com prazo de remediação); scan de dependências (`npm audit`/`govulncheck`) e scan de imagem de container antes do push para o registry.
+### 5. Security scan
+- **Acceptance criterion**: zero `critical`/`high` vulnerabilities without an explicitly approved exception (with remediation deadline); dependency scan (`npm audit`/`govulncheck`) and container image scan before push to registry.
 
-### 6. Build e push de imagem
-- Imagem versionada por SHA do commit (nunca `:latest` em deploy), com SBOM gerado e anexado ao artefato.
+### 6. Image build and push
+- Image versioned by commit SHA (never `:latest` in deploy), with SBOM generated and attached to the artifact.
 
-### 7. Deploy progressivo
-- `dev` automático a cada merge na branch principal → `staging` automático após smoke test em `dev` → `prod` com aprovação manual (para serviços que movimentam valor: `cashin`, `cashout`) ou automático com canary + rollback automático por métrica (para serviços sem essa criticidade, ex: `audit-service`).
-- **Critério de rollback automático**: taxa de erro > 1% ou latência p95 acima do SLO (ver `docs/technical/architecture/observability.md`) nos primeiros 10 minutos após deploy dispara rollback automático, sem esperar intervenção humana.
+### 7. Progressive deploy
+- `dev` automatic on every merge to main branch → `staging` automatic after smoke test in `dev` → `prod` with manual approval (for services that move value: `cashin`, `cashout`) or automatic with canary + automatic rollback by metric (for services without that criticality, e.g. `audit-service`).
+- **Automatic rollback criterion**: error rate > 1% or p95 latency above SLO (see `docs/technical/architecture/observability.md`) in the first 10 minutes after deploy triggers automatic rollback, without waiting for human intervention.
 
-## Branch e PR
+## Branch and PR
 
-- Sem push direto na branch principal — todo código entra via PR.
-- PR exige: 1 aprovação humana + todos os gates acima verdes. Para os serviços que movimentam valor (`cashin`, `cashout`, `gateway`), exige 2 aprovações.
-- Commits seguem Conventional Commits (ver `docs/technical/guidelines/coding-standards.md`), o que alimenta o changelog automático por serviço — ver `docs/technical/versioning.md` para o mapeamento commit → versão → changelog e a ferramenta usada.
+- No direct push to main branch — all code enters via PR.
+- PR requires: 1 human approval + all gates above green. For services that move value (`cashin`, `cashout`, `gateway`), 2 approvals are required.
+- Commits follow Conventional Commits (see `docs/technical/guidelines/coding-standards.md`), which feeds automatic changelog per service — see `docs/technical/versioning.md` for commit → version → changelog mapping and tooling used.

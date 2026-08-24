@@ -1,29 +1,29 @@
-# Retrospectiva e melhoria contínua
+# Retrospective and continuous improvement
 
-Os demais documentos (`docs/technical/guidelines/`, `docs/technical/ci-cd.md`) descrevem o padrão atual. Este documento define **quando e como esse padrão muda** — sem isso, guideline vira documento estático que ninguém revisita, e o mesmo erro se repete em serviços diferentes porque a lição da primeira vez nunca voltou pra regra escrita.
+The other documents (`docs/technical/guidelines/`, `docs/technical/ci-cd.md`) describe the current standard. This document defines **when and how that standard changes** — without this, a guideline becomes a static document nobody revisits, and the same mistake repeats across different services because the lesson from the first time never made it back into the written rule.
 
-## Gatilhos de retrospectiva
+## Retrospective triggers
 
-Não é só "depois de um incidente em produção" — isso é tarde demais e caro demais como único gatilho. Gatilhos, do mais barato ao mais caro:
+It is not only "after a production incident" — that is too late and too expensive as the sole trigger. Triggers, from cheapest to most costly:
 
-1. **Fim de uma fase** — ao fechar todas as milestones de uma fase, `/wiz-retro <slug> <fase>` revisita as notas de review daquela fase (`.wiz/<slug>/reviews/`) em conjunto, não isoladamente. Um achado isolado é um achado; o mesmo tipo de achado em duas milestones da mesma fase é um padrão.
-2. **Sinal em `docs/technical/quality/ai-process-metrics.md`** — se a taxa de achado em review para um tipo específico de desvio se repete entre serviços diferentes, a guideline (não a implementação) provavelmente está pouco clara ou desatualizada.
-3. **Incidente em produção** (ver `docs/technical/infrastructure/sre-runbook.md`) — o gatilho mais caro. Todo incidente cuja causa raiz é rastreável a uma implementação que seguiu a guideline corretamente, mas a guideline estava errada/incompleta, gera atualização obrigatória da guideline como parte do encerramento do incidente — não é opcional nem faseado para "depois".
+1. **End of a phase** — when closing all milestones in a phase, `/wiz-retro <slug> <phase-number>` revisits that phase's review notes (`.wiz/<slug>/reviews/`) together, not in isolation. An isolated finding is a finding; the same type of finding in two milestones of the same phase is a pattern.
+2. **Signal in `docs/technical/quality/ai-process-metrics.md`** — if the review finding rate for a specific deviation type repeats across different services, the guideline (not the implementation) is probably unclear or outdated.
+3. **Production incident** (see `docs/technical/infrastructure/sre-runbook.md`) — the most expensive trigger. Every incident whose root cause is traceable to an implementation that followed the guideline correctly, but the guideline was wrong/incomplete, requires a mandatory guideline update as part of incident closure — it is not optional nor phased for "later".
 
-## O que decidir numa retrospectiva
+## What to decide in a retrospective
 
-Para cada achado revisitado, a decisão é uma destas três — e a retro precisa registrar explicitamente qual foi escolhida, não deixar implícito:
+For each revisited finding, the decision is one of these three — and the retro must record explicitly which was chosen, not leave it implicit:
 
-- **Manter como débito técnico aceito** — o achado é real, mas o custo de generalizar uma regra a partir de uma única ocorrência é maior que o risco de deixar como está. Continua sendo monitorado (próxima ocorrência do mesmo padrão vira gatilho automático de revisão).
-- **Atualizar a guideline** — o achado se repetiu ou o impacto justifica mudar a regra escrita, não só o código de um serviço. A guideline correspondente em `docs/technical/guidelines/` é editada e recebe, ao fim do arquivo, uma entrada de histórico: data, motivo e link para a retro que originou a mudança. Guideline alterada sem essa entrada perde a rastreabilidade de por que mudou.
-- **Virar ADR** — se a mudança tem trade-off arquitetural relevante (não é só estilo/convenção), vira um ADR novo em `docs/decisions/`, não só uma edição silenciosa da guideline.
+- **Keep as accepted technical debt** — the finding is real, but the cost of generalizing a rule from a single occurrence is greater than the risk of leaving it as is. It remains monitored (the next occurrence of the same pattern becomes an automatic review trigger).
+- **Update the guideline** — the finding repeated or the impact justifies changing the written rule, not just one service's code. The corresponding guideline in `docs/technical/guidelines/` is edited and receives, at the end of the file, a history entry: date, reason, and link to the retro that originated the change. A changed guideline without that entry loses traceability of why it changed.
+- **Become an ADR** — if the change has relevant architectural trade-offs (not just style/convention), it becomes a new ADR in `docs/decisions/`, not just a silent guideline edit.
 
-## Onde as retrospectivas ficam
+## Where retrospectives live
 
-`.wiz/<slug>/retros/phase-<n>-retro.md` — uma por fase encerrada, não uma por milestone: a granularidade de milestone já está nas notas de review em `.wiz/<slug>/reviews/`.
+`.wiz/<slug>/retros/phase-<n>-retro.md` — one per closed phase, not one per milestone: milestone granularity is already in review notes at `.wiz/<slug>/reviews/`.
 
-O comando `/wiz-retro` delega ao agente `wiz-retro-analyst`, que lê as notas de review da fase, agrupa achados por tipo de desvio e exige uma das três decisões acima para cada um — incluindo, quando a decisão é manter o débito, o gatilho explícito que a reabriria. `/wiz-retro` e `wiz-retro-analyst` são uma extensão feita neste fork sobre o wiz-cursor upstream, que não tinha um comando de fechamento de fase equivalente (ver `.claude/NOTICE.md`).
+The `/wiz-retro` command delegates to the `wiz-retro-analyst` agent, which reads the phase review notes, groups findings by deviation type, and requires one of the three decisions above for each — including, when the decision is to keep debt, the explicit trigger that would reopen it. `/wiz-retro` and `wiz-retro-analyst` are an extension made in this fork over upstream wiz-cursor, which did not have an equivalent phase-closure command (see `.claude/NOTICE.md`).
 
-## Por que isso fecha o ciclo do SDLC assistido por IA
+## Why this closes the AI-assisted SDLC cycle
 
-Sem esse mecanismo, cada nova sessão de IA (ver `docs/technical/prompt-engineering.md`, gestão de janela de contexto) reaprenderia — ou pior, não reaprenderia — a mesma lição que uma sessão anterior já pagou o preço de descobrir. A retro é o que transforma um achado de review de "informação perdida numa conversa antiga" em "regra persistida que a próxima sessão consulta via `.wiz/context/authoritative-sources.md`".
+Without this mechanism, each new AI session (see `docs/technical/prompt-engineering.md`, context window management) would re-learn — or worse, not re-learn — the same lesson a previous session already paid the price to discover. The retro is what turns a review finding from "information lost in an old conversation" into "persisted rule the next session consults via `.wiz/context/authoritative-sources.md`".

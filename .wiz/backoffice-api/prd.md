@@ -12,186 +12,186 @@ fuzzing_policy: "core areas (DTOs, auth, validation)"
 
 # PRD — Backoffice API (V1)
 
-**Produto:** backoffice-api  
-**Ecossistema:** PayFlow Hub  
+**Product:** backoffice-api  
+**Ecosystem:** PayFlow Hub  
 **Stack:** NestJS · TypeORM · PostgreSQL · Redis · Kafka (KafkaJS) · DataDog  
-**Região AWS:** sa-east-1 (LGPD)  
-**Escopo:** Versão 1 — fundações completas, features simplificadas  
+**AWS Region:** sa-east-1 (LGPD)  
+**Scope:** Version 1 — complete foundations, simplified features  
 
 ---
 
 ## 1. Background
 
-O **PayFlow Hub** centraliza operações de cash-in e cash-out como intermediário multi-tenant entre plataformas integradoras (Partners) e provedores bancários (BaaS). O ecossistema é composto por microservices em Go para o core transacional e um produto separado de backoffice (NestJS + Next.js) para gestão operacional.
+The **PayFlow Hub** centralizes cash-in and cash-out operations as a multi-tenant intermediary between integration platforms (Partners) and banking providers (BaaS). The ecosystem consists of Go microservices for the transactional core and a separate backoffice product (NestJS + Next.js) for operational management.
 
-O `backoffice-api` é o backend do painel administrativo. Ele **não faz parte do caminho crítico de pagamentos** — uma falha no backoffice não afeta a API de pagamentos. Sua função é fornecer visibilidade operacional (depósitos, saques, circuit breaker) e configuração de runtime (balanceamento de provedores, limites, tenants) para operadores internos.
+The `backoffice-api` is the backend of the administrative panel. It **is not part of the critical payment path** — a backoffice failure does not affect the payments API. Its role is to provide operational visibility (deposits, withdrawals, circuit breaker) and runtime configuration (provider balancing, limits, tenants) for internal operators.
 
-### Referências de arquitetura
+### Architecture references
 
-| Documento | Papel |
+| Document | Role |
 |---|---|
-| [`PRD.md`](../../../../docs/product/PRD.md) | PRD do hub completo — escopo, personas e NFRs |
-| [`architecture/overview.md`](../../../../docs/technical/architecture/overview.md) | Arquitetura do hub, protocolos internos, evolução v1 → v2 |
-| [`architecture/security.md`](../../../../docs/technical/architecture/security.md) | Modelo de ameaças, autenticação por camada, proteção de dados |
-| [`contract/contract.md`](../../../../docs/contract/contract.md) | Convenções de API REST e de eventos Kafka |
-| [`guidelines/`](../../../../docs/technical/guidelines/) | Padrões de código, DI, tratamento de erro e logging |
-| [`decisions/`](../../../../docs/decisions/) | ADR-0001 (outbox) e ADR-0002 (read model do backoffice) |
+| [`PRD.md`](../../../../docs/product/PRD.md) | Full hub PRD — scope, personas, and NFRs |
+| [`architecture/overview.md`](../../../../docs/technical/architecture/overview.md) | Hub architecture, internal protocols, v1 → v2 evolution |
+| [`architecture/security.md`](../../../../docs/technical/architecture/security.md) | Threat model, authentication by layer, data protection |
+| [`contract/contract.md`](../../../../docs/contract/contract.md) | REST API and Kafka event conventions |
+| [`guidelines/`](../../../../docs/technical/guidelines/) | Code standards, DI, error handling, and logging |
+| [`decisions/`](../../../../docs/decisions/) | ADR-0001 (outbox) and ADR-0002 (backoffice read model) |
 
 ---
 
 ## 2. Problem Statement
 
-O core transacional do Hub processa pagamentos instantâneos e gera eventos via Kafka. Sem o backoffice-api:
+The Hub's transactional core processes instant payments and emits events via Kafka. Without the backoffice-api:
 
-- **Operadores não têm visibilidade** sobre depósitos, saques, status de provedores e circuit breaker
-- **Configurações de runtime** (pesos de balanceamento, limites por tenant, ativação/suspensão de provedores) exigem acesso direto ao banco ou Redis — risco operacional
-- **Não existe trilha de auditoria** consultável para compliance
-- **Não há gestão de usuários** com controle de acesso por perfil e organização
+- **Operators lack visibility** into deposits, withdrawals, provider status, and circuit breaker
+- **Runtime configuration** (balancing weights, per-tenant limits, provider activation/suspension) requires direct access to the database or Redis — operational risk
+- **There is no queryable audit trail** for compliance
+- **There is no user management** with access control by role and organization
 
 ---
 
 ## 3. Goals
 
-- Fornecer API REST completa para o painel operacional do PayFlow Hub
-- Implementar read model via Kafka consumers para visibilidade de transações sem acoplar ao core
-- Gerenciar configurações de balanceamento e circuit breaker com propagação em tempo real via Redis
-- **CRUD completo de Tenants** com geração de Bearer Token e propagação (core-db → Redis)
-- **CRUD completo de BaaS Providers** com credenciais exclusivamente no AWS Secrets Manager (IAM split: backoffice=write, core=read)
-- Implementar RBAC com 5 perfis (Admin, Operações, Financeiro, Compliance, Atendimento) — deny-by-default
-- **Autenticação segura com 2FA via email** (OTP, obrigatório para ADMIN/COMPLIANCE) + account lockout + password policy OWASP
-- Introduzir conceito de Organization para agrupamento de tenants e scoping de acesso
-- Garantir isolamento multi-tenant com RLS em ambos os bancos
-- Atingir 90% de cobertura de testes nas classes que carregam regra de negócio
-- Observabilidade com DataDog desde o dia 1 (Winston + dd-trace-js)
-- Edge protection com WAF + API Gateway + ALB como baseline de segurança (OWASP Top 10)
-- **SSE (Server-Sent Events)** para atualização em tempo real das telas de transações e circuit breaker — sem polling no frontend
+- Provide a complete REST API for the PayFlow Hub operational panel
+- Implement read model via Kafka consumers for transaction visibility without coupling to the core
+- Manage balancing and circuit breaker configuration with real-time propagation via Redis
+- **Full Tenant CRUD** with Bearer Token generation and propagation (core-db → Redis)
+- **Full BaaS Provider CRUD** with credentials exclusively in AWS Secrets Manager (IAM split: backoffice=write, core=read)
+- Implement RBAC with 5 roles (Admin, Operations, Finance, Compliance, Support) — deny-by-default
+- **Secure authentication with email 2FA** (OTP, mandatory for ADMIN/COMPLIANCE) + account lockout + OWASP password policy
+- Introduce Organization concept for tenant grouping and access scoping
+- Ensure multi-tenant isolation with RLS in both databases
+- Achieve 90% test coverage on classes that carry business rules
+- Observability with DataDog from day 1 (Winston + dd-trace-js)
+- Edge protection with WAF + API Gateway + ALB as security baseline (OWASP Top 10)
+- **SSE (Server-Sent Events)** for real-time updates on transaction and circuit breaker screens — no polling on the frontend
 
-## 4. Non-Goals (Excluído — V2+)
+## 4. Non-Goals (Excluded — V2+)
 
-- Dashboard executivo com gráficos de volumetria
-- Exportação CSV assíncrona
-- Purge/retenção automática do read model (`cashin_transactions`, `cashout_transactions`) — V2 via EventBridge Scheduler + Lambda (sem lock distribuído na aplicação)
-- Fila de retenção manual para cashouts `QUEUED` (depends on `rules-engine`)
-- Integração gRPC com `rules-engine`
-- Compliance dashboard e integração com `compliance-worker`
-- OpenSearch para trilha regulatória de 5 anos
-- Onboarding self-service de tenants
-- Scheduler automático de recalibração de pesos (auto mode do balanceamento)
-- CB auto-recovery com goroutine proativa
-- CB flapping rule (janela 80%/10min)
-- Rate limit por tenant no hub-gateway (JWT RSA-256 + IP whitelist)
-- Reconciliação bancária
-- Relatórios consolidados no nível de Organization (soma de todos os tenants)
-- `partner_id` como entidade no core-db (plataforma de integração ≠ Organization)
+- Executive dashboard with volume charts
+- Async CSV export
+- Automatic read model purge/retention (`cashin_transactions`, `cashout_transactions`) — V2 via EventBridge Scheduler + Lambda (no distributed lock in the application)
+- Manual retention queue for `QUEUED` cashouts (depends on `rules-engine`)
+- gRPC integration with `rules-engine`
+- Compliance dashboard and integration with `compliance-worker`
+- OpenSearch for 5-year regulatory trail
+- Self-service tenant onboarding
+- Automatic weight recalibration scheduler (balancing auto mode)
+- CB auto-recovery with proactive goroutine
+- CB flapping rule (80%/10min window)
+- Per-tenant rate limit on hub-gateway (JWT RSA-256 + IP whitelist)
+- Bank reconciliation
+- Consolidated reports at Organization level (sum of all tenants)
+- `partner_id` as an entity in core-db (integration platform ≠ Organization)
 
 ---
 
-## 5. Modelo de Domínio
+## 5. Domain Model
 
-### Hierarquia conceitual
+### Conceptual hierarchy
 
 ```
-Organization (Acme)          ← empresa dona dos tenants (backoffice only)
-  ├── Tenant (Acme)       ← brand operacional (todo o ecossistema)
-  │     └── Partner: Vertex  ← plataforma de integração (pode mudar)
+Organization (Acme)          ← company that owns the tenants (backoffice only)
+  ├── Tenant (Acme)       ← operational brand (entire ecosystem)
+  │     └── Partner: Vertex  ← integration platform (may change)
   └── Tenant (Globex)
         └── Partner: Vertex
 
-Backoffice User (operador)
-  └── pertence a 1 Organization
-        ├── tenant_ids = [] → ADMIN concedeu acesso a TODOS os tenants da Organization
-        └── tenant_ids = [Acme] → ADMIN restringiu acesso a tenants específicos
+Backoffice User (operator)
+  └── belongs to 1 Organization
+        ├── tenant_ids = [] → ADMIN granted access to ALL tenants in the Organization
+        └── tenant_ids = [Acme] → ADMIN restricted access to specific tenants
 ```
 
-### Distinção Organization vs. Partner vs. Tenant
+### Organization vs. Partner vs. Tenant distinction
 
-| Conceito | Definição | Escopo | Mutabilidade |
+| Concept | Definition | Scope | Mutability |
 |---|---|---|---|
-| **Organization** | Empresa que possui e opera os tenants | Backoffice — agrupamento e controle de acesso | Estável |
-| **Tenant** | Brand com configs independentes (provedores, limites, webhook) | Todo o ecossistema — `tenant_id` em todas as tabelas transacionais | Estável |
-| **Partner** | Plataforma de integração (ex: Vertex) | Gateway/core — auth, callbacks, mapeamento de campos | Pode mudar por tenant |
+| **Organization** | Company that owns and operates the tenants | Backoffice — grouping and access control | Stable |
+| **Tenant** | Brand with independent configs (providers, limits, webhook) | Entire ecosystem — `tenant_id` in all transactional tables | Stable |
+| **Partner** | Integration platform (e.g. Vertex) | Gateway/core — auth, callbacks, field mapping | May change per tenant |
 
-A Organization é introduzida em V1 porque:
-- Não afeta nenhum serviço transacional (cashin, cashout, webhook, outbox-relay)
-- Não altera Kafka event contracts nem Redis keys
-- Resolve uma necessidade real do backoffice: scoping de acesso e agrupamento de tenants
-- É aditiva ao schema do `core-db` (tabela `organizations` + FK em `tenants`)
+Organization is introduced in V1 because:
+- It does not affect any transactional service (cashin, cashout, webhook, outbox-relay)
+- It does not change Kafka event contracts or Redis keys
+- It addresses a real backoffice need: access scoping and tenant grouping
+- It is additive to the `core-db` schema (`organizations` table + FK on `tenants`)
 
-O `partner_id` do ecossistema PRD (V2) é um conceito diferente — representa a plataforma de integração, não o dono.
+The ecosystem PRD's `partner_id` (V2) is a different concept — it represents the integration platform, not the owner.
 
 ---
 
-## 6. Usuários e Personas
+## 6. Users and Personas
 
-| Persona | Perfil RBAC | Responsabilidade |
+| Persona | RBAC Role | Responsibility |
 |---|---|---|
-| Administrador | `ADMIN` | Gestão completa: usuários, organizações, configurações, auditoria |
-| Operador | `OPERATIONS` | Monitoramento de transações, configuração de balanceamento e CB |
-| Financeiro | `FINANCE` | Consulta de depósitos e saques, relatórios |
-| Compliance | `COMPLIANCE` | Trilha de auditoria, histórico cronológico de transações |
-| Atendimento | `SUPPORT` | Consulta básica de transações para suporte ao pagador |
+| Administrator | `ADMIN` | Full management: users, organizations, configuration, audit |
+| Operator | `OPERATIONS` | Transaction monitoring, balancing and CB configuration |
+| Finance | `FINANCE` | Deposit and withdrawal queries, reports |
+| Compliance | `COMPLIANCE` | Audit trail, chronological transaction history |
+| Support | `SUPPORT` | Basic transaction queries for payer support |
 
-### Matriz de permissões (V1)
+### Permission matrix (V1)
 
-| Tela / Ação | ADMIN | OPERATIONS | FINANCE | COMPLIANCE | SUPPORT |
+| Screen / Action | ADMIN | OPERATIONS | FINANCE | COMPLIANCE | SUPPORT |
 |---|---|---|---|---|---|
-| Consulta depósitos | ✓ | ✓ | ✓ | ✓ | leitura básica |
-| Consulta saques | ✓ | ✓ | ✓ | ✓ | leitura básica |
-| Exportação CSV (V2) | ✓ | ✓ | ✓ | ✓ | ✗ |
-| Config balanceamento | ✓ | ✓ | ✗ | ✗ | ✗ |
-| Config circuit breaker | ✓ | ✓ | ✗ | ✗ | ✗ |
-| Histórico de kicks | ✓ | ✓ | ✗ | ✗ | ✗ |
-| Gestão de organizações | ✓ | ✗ | ✗ | ✗ | ✗ |
-| Gestão de tenants (CRUD) | ✓ | ✗ | ✗ | ✗ | ✗ |
-| Consulta de tenants | ✓ | ✓ | ✗ | ✗ | ✗ |
-| Gestão de BaaS providers (CRUD + credenciais SM) | ✓ | ✗ | ✗ | ✗ | ✗ |
-| Consulta de BaaS providers (sem credenciais) | ✓ | ✓ | ✗ | ✗ | ✗ |
-| Gestão de usuários | ✓ | ✗ | ✗ | ✗ | ✗ |
-| Trilha de auditoria | ✓ | ✗ | ✗ | ✓ | ✗ |
+| Deposit query | ✓ | ✓ | ✓ | ✓ | basic read |
+| Withdrawal query | ✓ | ✓ | ✓ | ✓ | basic read |
+| CSV export (V2) | ✓ | ✓ | ✓ | ✓ | ✗ |
+| Balancing config | ✓ | ✓ | ✗ | ✗ | ✗ |
+| Circuit breaker config | ✓ | ✓ | ✗ | ✗ | ✗ |
+| Kick history | ✓ | ✓ | ✗ | ✗ | ✗ |
+| Organization management | ✓ | ✗ | ✗ | ✗ | ✗ |
+| Tenant management (CRUD) | ✓ | ✗ | ✗ | ✗ | ✗ |
+| Tenant query | ✓ | ✓ | ✗ | ✗ | ✗ |
+| BaaS provider management (CRUD + SM credentials) | ✓ | ✗ | ✗ | ✗ | ✗ |
+| BaaS provider query (no credentials) | ✓ | ✓ | ✗ | ✗ | ✗ |
+| User management | ✓ | ✗ | ✗ | ✗ | ✗ |
+| Audit trail | ✓ | ✗ | ✗ | ✓ | ✗ |
 
 ---
 
-## 7. Arquitetura Técnica
+## 7. Technical Architecture
 
-### Posição no ecossistema
+### Position in the ecosystem
 
 ```
-Core Transacional (Go Microservices)
-        ↓  publica eventos no Kafka
+Transactional Core (Go Microservices)
+        ↓  publishes events to Kafka
   Event Backbone (MSK Kafka)
-        ↓  consome e projeta
+        ↓  consumes and projects
   backoffice-api (NestJS)
-    ├── lê: backoffice-db (read model + audit ledger)
-    ├── escreve config: core-db → Redis
-    ├── emite SSE: projections → EventsService → GET /api/events/*
-    └── serve: backoffice-frontend (Next.js)
+    ├── reads: backoffice-db (read model + audit ledger)
+    ├── writes config: core-db → Redis
+    ├── emits SSE: projections → EventsService → GET /api/events/*
+    └── serves: backoffice-frontend (Next.js)
         ↑  REST + SSE (Server-Sent Events)
-  Operadores / Financeiro / Compliance / Admin
+  Operators / Finance / Compliance / Admin
 ```
 
-### Bancos de dados
+### Databases
 
-O backoffice-api conecta em **dois bancos PostgreSQL** com propósitos distintos:
+The backoffice-api connects to **two PostgreSQL databases** with distinct purposes:
 
-**DataSource primária — `backoffice-db` (read model + auditoria):**
-- `cashin_transactions` — projeção de depósitos (estado atual)
-- `cashout_transactions` — projeção de saques (estado atual)
-- `circuit_breaker_events` — histórico de kicks e recoveries
-- `transaction_audit_ledger` — ledger cronológico append-only (escrito pelo `audit-worker`)
-- `backoffice_users` — usuários internos com RBAC
+**Primary DataSource — `backoffice-db` (read model + audit):**
+- `cashin_transactions` — deposit projection (current state)
+- `cashout_transactions` — withdrawal projection (current state)
+- `circuit_breaker_events` — kick and recovery history
+- `transaction_audit_ledger` — append-only chronological ledger (written by `audit-worker`)
+- `backoffice_users` — internal users with RBAC
 
-**DataSource secundária — `core-db` (configuração):**
-- `organizations` — **novo em V1** — empresas donas dos tenants
-- `tenants` — brands com `organization_id` FK
-- `provider_configs` — configurações de provedores por tenant
-- `routing_configs` — pesos de balanceamento por tenant e flow_type
-- `circuit_breaker_configs` — thresholds do CB por tenant, provedor e flow_type
-- `tenant_limits` — limites operacionais (cashin min/max, cashout min/max, daily limit)
-- `tenant_auth` — hash do Bearer Token por tenant (gateway lookup)
+**Secondary DataSource — `core-db` (configuration):**
+- `organizations` — **new in V1** — companies that own tenants
+- `tenants` — brands with `organization_id` FK
+- `provider_configs` — provider configurations per tenant
+- `routing_configs` — balancing weights per tenant and flow_type
+- `circuit_breaker_configs` — CB thresholds per tenant, provider, and flow_type
+- `tenant_limits` — operational limits (cashin min/max, cashout min/max, daily limit)
+- `tenant_auth` — Bearer Token hash per tenant (gateway lookup)
 
-**Abordagem TypeORM:** DataSource primária (`backoffice-db`) via `TypeOrmModule.forRoot()` + DataSource secundária (`core-db`) via `TypeOrmModule.forRoot('core')` com named connection. Entities e repositories são associados à conexão correta via `@InjectRepository(Entity, 'core')`.
+**TypeORM approach:** Primary DataSource (`backoffice-db`) via `TypeOrmModule.forRoot()` + secondary DataSource (`core-db`) via `TypeOrmModule.forRoot('core')` with named connection. Entities and repositories are associated with the correct connection via `@InjectRepository(Entity, 'core')`.
 
-### Schema novo: tabela `organizations` (core-db)
+### New schema: `organizations` table (core-db)
 
 ```sql
 CREATE TABLE organizations (
@@ -206,7 +206,7 @@ CREATE TABLE organizations (
 );
 ```
 
-Alterações em tabelas existentes:
+Changes to existing tables:
 
 ```sql
 -- core-db: tenants
@@ -214,63 +214,63 @@ ALTER TABLE tenants ADD COLUMN organization_id UUID NOT NULL REFERENCES organiza
 CREATE INDEX idx_tenants_organization ON tenants(organization_id);
 
 -- backoffice-db: backoffice_users
--- organization_id define a Organization; tenant_ids controla acesso granular
+-- organization_id defines the Organization; tenant_ids controls granular access
 ALTER TABLE backoffice_users ADD COLUMN organization_id UUID NOT NULL;
--- tenant_ids permanece: se vazio ({}), usuário vê TODOS os tenants da Organization
--- se preenchido, vê APENAS os tenants listados (devem pertencer à Organization)
+-- tenant_ids remains: if empty ({}), user sees ALL tenants in the Organization
+-- if populated, user sees ONLY the listed tenants (must belong to the Organization)
 ```
 
 ### Redis
 
-O `backoffice-api` usa **dois Redis distintos** para isolar responsabilidades e evitar contenção:
+The `backoffice-api` uses **two distinct Redis instances** to isolate responsibilities and avoid contention:
 
-#### Redis Core (`REDIS_URL`) — ElastiCache Redis 7 (compartilhado com core)
+#### Core Redis (`REDIS_URL`) — ElastiCache Redis 7 (shared with core)
 
-Responsável exclusivamente por dados que os microservices do core precisam ler. O backoffice-api **escreve** essas configurações e o core as **lê** em tempo real:
+Exclusively responsible for data that core microservices need to read. The backoffice-api **writes** these configurations and the core **reads** them in real time:
 
-**Configurações de tenant e roteamento (escritas pelo backoffice-api, lidas pelo core):**
+**Tenant and routing configuration (written by backoffice-api, read by core):**
 
-| Chave | Escrito por | Propósito |
+| Key | Written by | Purpose |
 |---|---|---|
 | `tenant:config:{tenant_id}` | backoffice-api | IP whitelist, webhook_url, active, rate_limit |
 | `tenant:limits:{tenant_id}` | backoffice-api | cashin/cashout min/max, daily_limit |
-| `tenant:providers:{tenant_id}` | backoffice-api | lista de providers |
-| `routing:weights:{tenant_id}:{flow_type}` | backoffice-api | pesos por provider |
+| `tenant:providers:{tenant_id}` | backoffice-api | provider list |
+| `routing:weights:{tenant_id}:{flow_type}` | backoffice-api | weights per provider |
 
-`tenant:config:{tenant_id}` não é fonte de parâmetros de Circuit Breaker. A chave oficial de configuração de CB é `circuit_breaker_configs:{tenant_id}:{provider_id}:{flow_type}`.
+`tenant:config:{tenant_id}` is not the source of Circuit Breaker parameters. The official CB configuration key is `circuit_breaker_configs:{tenant_id}:{provider_id}:{flow_type}`.
 
-Chaves de CB (`cb:state:*`, `cb:halfopen:*`) são lidas pelo backoffice para exibição de status, mas **escritas apenas pelos services core**.
+CB keys (`cb:state:*`, `cb:halfopen:*`) are read by the backoffice for status display, but **written only by core services**.
 
-#### Valkey Auth (`REDIS_AUTH_URL`) — ElastiCache for Valkey (exclusivo backoffice-api, AOF habilitado)
+#### Valkey Auth (`REDIS_AUTH_URL`) — ElastiCache for Valkey (backoffice-api exclusive, AOF enabled)
 
-Instância isolada para dados de autenticação e segurança exclusivos do backoffice-api. Isolada do Redis core para evitar contenção e garantir que uma sobrecarga nos microservices core não afete a segurança do painel. **AOF habilitado**: dados sobrevivem a restarts (perder a JWT blacklist equivale a revalidar tokens já revogados).
+Isolated instance for authentication and security data exclusive to backoffice-api. Isolated from core Redis to avoid contention and ensure that core microservice overload does not affect panel security. **AOF enabled**: data survives restarts (losing the JWT blacklist is equivalent to re-validating already revoked tokens).
 
-| Chave | Escrito por | Propósito | TTL |
+| Key | Written by | Purpose | TTL |
 |---|---|---|---|
-| `jwt_blacklist:{jti}` | backoffice-api | Blacklist de logout | Tempo restante do token |
-| `2fa:otp:{user_id}` | backoffice-api | OTP de 2FA (max 3 tentativas) | 5min |
-| `2fa:session:{session_token}` | backoffice-api | Sessão temporária pré-2FA | 5min |
-| `login_attempts:{email}` | backoffice-api | Contador de tentativas falhas (account lockout) | 15min |
-| `provider:credentials:arn:{tid}:{code}` | backoffice-api | Cache do ARN do Secrets Manager para lookup | 5min |
+| `jwt_blacklist:{jti}` | backoffice-api | Logout blacklist | Remaining token lifetime |
+| `2fa:otp:{user_id}` | backoffice-api | 2FA OTP (max 3 attempts) | 5min |
+| `2fa:session:{session_token}` | backoffice-api | Pre-2FA temporary session | 5min |
+| `login_attempts:{email}` | backoffice-api | Failed attempt counter (account lockout) | 15min |
+| `provider:credentials:arn:{tid}:{code}` | backoffice-api | Secrets Manager ARN cache for lookup | 5min |
 
-#### Redis Pub/Sub (`REDIS_PUBSUB_URL`) — ElastiCache for Valkey (isolado, sem persistência)
+#### Redis Pub/Sub (`REDIS_PUBSUB_URL`) — ElastiCache for Valkey (isolated, no persistence)
 
-Responsável exclusivamente pelo fanout de eventos SSE entre instâncias. Sem este Redis, clientes SSE conectados a instâncias que não consomem o evento Kafka nunca receberiam a notificação (ver ADR 001).
+Exclusively responsible for SSE event fanout between instances. Without this Redis, SSE clients connected to instances that do not consume the Kafka event would never receive the notification (see ADR 001).
 
-| Canal | Tipo de payload | Propósito |
+| Channel | Payload type | Purpose |
 |---|---|---|
-| `tx-events` | `TransactionEvent` (JSON) | Fanout de eventos de cashin/cashout para todas as instâncias |
-| `cb-events` | `CircuitBreakerEvent` (JSON) | Fanout de eventos de circuit breaker para todas as instâncias |
+| `tx-events` | `TransactionEvent` (JSON) | Fanout of cashin/cashout events to all instances |
+| `cb-events` | `CircuitBreakerEvent` (JSON) | Fanout of circuit breaker events to all instances |
 
-- Valkey é wire-compatible com Redis — zero mudança de código para comandos Pub/Sub
-- Conexões ioredis separadas: uma para `PUBLISH`, outra para `SUBSCRIBE` (requisito do protocolo)
-- Sem AOF/RDB em produção — dados são efêmeros por natureza
+- Valkey is wire-compatible with Redis — zero code change for Pub/Sub commands
+- Separate ioredis connections: one for `PUBLISH`, another for `SUBSCRIBE` (protocol requirement)
+- No AOF/RDB in production — data is ephemeral by nature
 
 ### Kafka
 
-**Consumer topics** (projeção do read model + alertas):
+**Consumer topics** (read model projection + alerts):
 
-| Tópico | Ação |
+| Topic | Action |
 |---|---|
 | `transaction.cashin.initiated.v1` | INSERT `cashin_transactions` (PENDING) |
 | `transaction.cashin.completed.v1` | UPDATE status `cashin_transactions` |
@@ -281,166 +281,166 @@ Responsável exclusivamente pelo fanout de eventos SSE entre instâncias. Sem es
 | `transaction.cashout.reversed.v1` | UPDATE status `cashout_transactions` |
 | `circuit_breaker.kicked.v1` | INSERT `circuit_breaker_events` |
 | `circuit_breaker.recovered.v1` | INSERT `circuit_breaker_events` |
-| `balancing.recalibrated.v1` | Log operacional |
-| `webhook.dlq.v1` | Alerta operacional |
+| `balancing.recalibrated.v1` | Operational log |
+| `webhook.dlq.v1` | Operational alert |
 
 **Producer topics:**
 
-| Tópico | Quando |
+| Topic | When |
 |---|---|
-| `balancing.recalibrated.v1` | Operador ajusta pesos manualmente |
+| `balancing.recalibrated.v1` | Operator manually adjusts weights |
 
-**Client:** `@nestjs/microservices` com transport Kafka (KafkaJS integrado). Consumer group: `backoffice-api`. Partition key: `tenant_id`.
+**Client:** `@nestjs/microservices` with Kafka transport (integrated KafkaJS). Consumer group: `backoffice-api`. Partition key: `tenant_id`.
 
-### Observabilidade
+### Observability
 
-| Camada | Tecnologia | Papel |
+| Layer | Technology | Role |
 |---|---|---|
-| Logging | Winston (JSON estruturado) | Logs para DataDog Log Management |
+| Logging | Winston (structured JSON) | Logs for DataDog Log Management |
 | APM / Tracing | dd-trace-js | Distributed tracing, auto-instrumentation |
-| Métricas | dd-trace-js custom metrics | Request latency, Kafka consumer lag, error rates |
-| Dashboards | DataDog | Operacional + alertas |
+| Metrics | dd-trace-js custom metrics | Request latency, Kafka consumer lag, error rates |
+| Dashboards | DataDog | Operational + alerts |
 
-Pino e Prometheus são **removidos** do boilerplate. Winston é escolhido pela integração nativa com DataDog (winston-datadog-logs transport).
+Pino and Prometheus are **removed** from the boilerplate. Winston is chosen for native DataDog integration (winston-datadog-logs transport).
 
-**Tags obrigatórias em todos os logs e traces:** `tenant_id`, `organization_id`, `user_id`, `request_id`, `trace_id`.
+**Mandatory tags on all logs and traces:** `tenant_id`, `organization_id`, `user_id`, `request_id`, `trace_id`.
 
-**PII masking:** CPF, email, telefone e nomes nunca aparecem em logs. Mesmas regras do ecossistema:
+**PII masking:** CPF, email, phone, and names never appear in logs. Same rules as the ecosystem:
 - CPF: `***.***.789-01`
 - Email: `c***@example.com`
-- Telefone: `***4321`
+- Phone: `***4321`
 
 ---
 
-## 8. Endpoints da API (V1)
+## 8. API Endpoints (V1)
 
-### Infraestrutura
+### Infrastructure
 
-| Método | Endpoint | Descrição | Auth |
+| Method | Endpoint | Description | Auth |
 |---|---|---|---|
-| `GET` | `/api/health` | Health check (DB, Redis, Kafka) | Público |
-| `GET` | `/api/health/redis-propagation` | Snapshot do backlog de reconciliação Redis (`redis_propagation_pending_total`) | Público |
+| `GET` | `/api/health` | Health check (DB, Redis, Kafka) | Public |
+| `GET` | `/api/health/redis-propagation` | Redis reconciliation backlog snapshot (`redis_propagation_pending_total`) | Public |
 
-### Autenticação + 2FA
+### Authentication + 2FA
 
-| Método | Endpoint | Descrição | Auth |
+| Method | Endpoint | Description | Auth |
 |---|---|---|---|
-| `POST` | `/api/auth/login` | Login email/senha → se 2FA habilitado: retorna `{ two_factor_required, session_token }`; se não: JWT + refresh token (HttpOnly cookie) | Público |
-| `POST` | `/api/auth/2fa/verify` | Valida OTP enviado por email → JWT + refresh token | session_token |
-| `POST` | `/api/auth/2fa/resend` | Reenvia OTP por email (max 3 reenvios) | session_token |
-| `POST` | `/api/auth/refresh` | Renova JWT com refresh token válido | Cookie |
-| `POST` | `/api/auth/logout` | Invalida sessão (blacklist JWT + refresh token no Redis) | JWT |
-| `PUT` | `/api/auth/password` | Altera senha do usuário autenticado (exige senha atual) | JWT |
+| `POST` | `/api/auth/login` | Email/password login → if 2FA enabled: returns `{ two_factor_required, session_token }`; if not: JWT + refresh token (HttpOnly cookie) | Public |
+| `POST` | `/api/auth/2fa/verify` | Validates OTP sent by email → JWT + refresh token | session_token |
+| `POST` | `/api/auth/2fa/resend` | Resends OTP by email (max 3 resends) | session_token |
+| `POST` | `/api/auth/refresh` | Renews JWT with valid refresh token | Cookie |
+| `POST` | `/api/auth/logout` | Invalidates session (JWT blacklist + refresh token in Redis) | JWT |
+| `PUT` | `/api/auth/password` | Changes authenticated user's password (requires current password) | JWT |
 
-### Organizations (novo em V1)
+### Organizations (new in V1)
 
-| Método | Endpoint | Descrição | Perfil |
+| Method | Endpoint | Description | Role |
 |---|---|---|---|
-| `GET` | `/api/organizations` | Lista organizações | ADMIN |
-| `POST` | `/api/organizations` | Cria organização | ADMIN |
-| `PUT` | `/api/organizations/:id` | Atualiza organização | ADMIN |
-| `DELETE` | `/api/organizations/:id` | Desativa organização (soft delete) | ADMIN |
+| `GET` | `/api/organizations` | Lists organizations | ADMIN |
+| `POST` | `/api/organizations` | Creates organization | ADMIN |
+| `PUT` | `/api/organizations/:id` | Updates organization | ADMIN |
+| `DELETE` | `/api/organizations/:id` | Deactivates organization (soft delete) | ADMIN |
 
 ### Tenants
 
-| Método | Endpoint | Descrição | Perfil |
+| Method | Endpoint | Description | Role |
 |---|---|---|---|
-| `GET` | `/api/tenants` | Lista tenants da organization do usuário | ADMIN, OPERATIONS |
-| `GET` | `/api/tenants/:id` | Detalhe de um tenant | ADMIN, OPERATIONS |
-| `POST` | `/api/tenants` | Cria tenant (gera Bearer Token em `tenant_auth`) | ADMIN |
-| `PUT` | `/api/tenants/:id` | Atualiza tenant | ADMIN |
-| `DELETE` | `/api/tenants/:id` | Desativa tenant (soft delete) | ADMIN |
-| `POST` | `/api/tenants/:id/resync-redis` | Reprocessa manualmente as chaves Redis do tenant | ADMIN |
+| `GET` | `/api/tenants` | Lists tenants in the user's organization | ADMIN, OPERATIONS |
+| `GET` | `/api/tenants/:id` | Tenant detail | ADMIN, OPERATIONS |
+| `POST` | `/api/tenants` | Creates tenant (generates Bearer Token in `tenant_auth`) | ADMIN |
+| `PUT` | `/api/tenants/:id` | Updates tenant | ADMIN |
+| `DELETE` | `/api/tenants/:id` | Deactivates tenant (soft delete) | ADMIN |
+| `POST` | `/api/tenants/:id/resync-redis` | Manually reprocesses tenant Redis keys | ADMIN |
 
 ### BaaS Providers
 
-| Método | Endpoint | Descrição | Perfil |
+| Method | Endpoint | Description | Role |
 |---|---|---|---|
-| `GET` | `/api/tenants/:tid/providers` | Lista BaaS providers do tenant (sem credenciais) | ADMIN, OPERATIONS |
-| `GET` | `/api/tenants/:tid/providers/:pid` | Detalhe (credenciais mascaradas) | ADMIN, OPERATIONS |
-| `POST` | `/api/tenants/:tid/providers` | Cadastra provider + armazena credenciais no AWS Secrets Manager | ADMIN |
-| `PUT` | `/api/tenants/:tid/providers/:pid` | Atualiza metadados do provider | ADMIN |
-| `PUT` | `/api/tenants/:tid/providers/:pid/credentials` | Rotaciona credenciais (novo secret no SM) | ADMIN |
-| `DELETE` | `/api/tenants/:tid/providers/:pid` | Desativa provider (soft delete) | ADMIN |
-| `POST` | `/api/tenants/:tid/providers/:pid/test-connection` | Testa conectividade com o BaaS | ADMIN |
-| `POST` | `/api/tenants/:tid/providers/resync-redis` | Reprocessa manualmente a chave `tenant:providers` no Redis | ADMIN |
+| `GET` | `/api/tenants/:tid/providers` | Lists tenant BaaS providers (no credentials) | ADMIN, OPERATIONS |
+| `GET` | `/api/tenants/:tid/providers/:pid` | Detail (masked credentials) | ADMIN, OPERATIONS |
+| `POST` | `/api/tenants/:tid/providers` | Registers provider + stores credentials in AWS Secrets Manager | ADMIN |
+| `PUT` | `/api/tenants/:tid/providers/:pid` | Updates provider metadata | ADMIN |
+| `PUT` | `/api/tenants/:tid/providers/:pid/credentials` | Rotates credentials (new secret in SM) | ADMIN |
+| `DELETE` | `/api/tenants/:tid/providers/:pid` | Deactivates provider (soft delete) | ADMIN |
+| `POST` | `/api/tenants/:tid/providers/:pid/test-connection` | Tests connectivity with BaaS | ADMIN |
+| `POST` | `/api/tenants/:tid/providers/resync-redis` | Manually reprocesses `tenant:providers` key in Redis | ADMIN |
 
-> **Credenciais de BaaS Providers:** armazenadas exclusivamente no AWS Secrets Manager (path: `payflow/{env}/tenants/{tenant_id}/providers/{provider_code}`). O `backoffice-api` tem IAM write-only (`PutSecretValue`, `CreateSecret`); o core (cashin/cashout-service) tem IAM read-only (`GetSecretValue`). Credenciais nunca persistem em banco, cache ou logs.
+> **BaaS Provider credentials:** stored exclusively in AWS Secrets Manager (path: `payflow/{env}/tenants/{tenant_id}/providers/{provider_code}`). The `backoffice-api` has IAM write-only (`PutSecretValue`, `CreateSecret`); the core (cashin/cashout-service) has IAM read-only (`GetSecretValue`). Credentials never persist in database, cache, or logs.
 
-### Transações (read model)
+### Transactions (read model)
 
-| Método | Endpoint | Descrição | Perfil |
+| Method | Endpoint | Description | Role |
 |---|---|---|---|
-| `GET` | `/api/deposits` | Lista depósitos com filtros (período, status, tenant, provedor, CPF, ID) | ALL |
-| `GET` | `/api/deposits/:id` | Detalhe de um depósito | ALL |
-| `GET` | `/api/withdrawals` | Lista saques com filtros equivalentes | ALL |
-| `GET` | `/api/withdrawals/:id` | Detalhe de um saque | ALL |
+| `GET` | `/api/deposits` | Lists deposits with filters (period, status, tenant, provider, CPF, ID) | ALL |
+| `GET` | `/api/deposits/:id` | Deposit detail | ALL |
+| `GET` | `/api/withdrawals` | Lists withdrawals with equivalent filters | ALL |
+| `GET` | `/api/withdrawals/:id` | Withdrawal detail | ALL |
 
-**Filtros comuns:** `tenant_id`, `status`, `provider_id`, `date_from`, `date_to`, `document_number`, `merchant_transaction_id`, `payer_id`. Paginação: `page` + `limit` (default 20, max 100).
+**Common filters:** `tenant_id`, `status`, `provider_id`, `date_from`, `date_to`, `document_number`, `merchant_transaction_id`, `payer_id`. Pagination: `page` + `limit` (default 20, max 100).
 
-> `SUPPORT` tem acesso de leitura básica (sem campos sensíveis como `document_number` completo).
+> `SUPPORT` has basic read access (no sensitive fields such as full `document_number`).
 
-### Provedores e Balanceamento
+### Providers and Balancing
 
-| Método | Endpoint | Descrição | Perfil |
+| Method | Endpoint | Description | Role |
 |---|---|---|---|
-| `GET` | `/api/providers` | Lista provedores por tenant | ADMIN, OPERATIONS |
-| `GET` | `/api/providers/:id/kicks` | Histórico de kicks do provedor | ADMIN, OPERATIONS |
-| `GET` | `/api/providers/:id/performance` | Métricas de conversão e volumetria | ADMIN, OPERATIONS |
-| `GET` | `/api/balancing/:tenant_id` | Config atual de balanceamento | ADMIN, OPERATIONS |
-| `PUT` | `/api/balancing/:tenant_id` | Atualiza pesos e modo (manual) | ADMIN, OPERATIONS |
+| `GET` | `/api/providers` | Lists providers by tenant | ADMIN, OPERATIONS |
+| `GET` | `/api/providers/:id/kicks` | Provider kick history | ADMIN, OPERATIONS |
+| `GET` | `/api/providers/:id/performance` | Conversion and volume metrics | ADMIN, OPERATIONS |
+| `GET` | `/api/balancing/:tenant_id` | Current balancing config | ADMIN, OPERATIONS |
+| `PUT` | `/api/balancing/:tenant_id` | Updates weights and mode (manual) | ADMIN, OPERATIONS |
 
 ### Circuit Breaker
 
-| Método | Endpoint | Descrição | Perfil |
+| Method | Endpoint | Description | Role |
 |---|---|---|---|
-| `GET` | `/api/circuit-breaker/:tenant_id` | Estado atual do CB por provedor e flow_type (lê Redis) | ADMIN, OPERATIONS |
-| `PUT` | `/api/circuit-breaker/:tenant_id/config` | Atualiza thresholds do CB | ADMIN, OPERATIONS |
-| `POST` | `/api/circuit-breaker/:tenant_id/kick` | Kick manual de provedor/flow (body: `provider_id`, `flow_type`) | ADMIN, OPERATIONS |
-| `POST` | `/api/circuit-breaker/:tenant_id/reinstate` | Reinstate manual de provedor/flow (body: `provider_id`, `flow_type`) | ADMIN, OPERATIONS |
+| `GET` | `/api/circuit-breaker/:tenant_id` | Current CB state by provider and flow_type (reads Redis) | ADMIN, OPERATIONS |
+| `PUT` | `/api/circuit-breaker/:tenant_id/config` | Updates CB thresholds | ADMIN, OPERATIONS |
+| `POST` | `/api/circuit-breaker/:tenant_id/kick` | Manual provider/flow kick (body: `provider_id`, `flow_type`) | ADMIN, OPERATIONS |
+| `POST` | `/api/circuit-breaker/:tenant_id/reinstate` | Manual provider/flow reinstate (body: `provider_id`, `flow_type`) | ADMIN, OPERATIONS |
 
-### Usuários
+### Users
 
-| Método | Endpoint | Descrição | Perfil |
+| Method | Endpoint | Description | Role |
 |---|---|---|---|
-| `GET` | `/api/users` | Lista usuários da organization do JWT (`active`, `roleId`, paginação) | ADMIN |
-| `GET` | `/api/users/:id` | Retorna usuário da organization do JWT por ID | ADMIN |
-| `POST` | `/api/users` | Cadastra novo usuário e dispara notificação por e-mail (retry/outbox em falha) | ADMIN |
-| `PUT` | `/api/users/:id` | Atualiza perfil, escopo (`tenantIds`), `active` e `twoFactorEnabled` | ADMIN |
-| `DELETE` | `/api/users/:id` | Desativa usuário (soft delete) | ADMIN |
+| `GET` | `/api/users` | Lists users in the JWT organization (`active`, `roleId`, pagination) | ADMIN |
+| `GET` | `/api/users/:id` | Returns user in the JWT organization by ID | ADMIN |
+| `POST` | `/api/users` | Registers new user and triggers email notification (retry/outbox on failure) | ADMIN |
+| `PUT` | `/api/users/:id` | Updates profile, scope (`tenantIds`), `active`, and `twoFactorEnabled` | ADMIN |
+| `DELETE` | `/api/users/:id` | Deactivates user (soft delete) | ADMIN |
 
-### Auditoria
+### Audit
 
-> O sistema mantém **dois ledgers de auditoria distintos**:
-> - `transaction_audit_ledger` — trilha cronológica de eventos financeiros (cashin/cashout), escrita exclusivamente pelo `audit-worker` via Kafka. Acessada pelos endpoints abaixo (leitura).
-> - `backoffice_audit_log` — trilha de ações administrativas privilegiadas (CREATE/UPDATE/DEACTIVATE/CONFIG_UPDATE/KICK/REINSTATE), escrita pelo `backoffice-api` em toda operação de escrita. Cobre roles ADMIN e OPERATIONS (OWASP ASVS V7).
+> The system maintains **two distinct audit ledgers**:
+> - `transaction_audit_ledger` — chronological trail of financial events (cashin/cashout), written exclusively by `audit-worker` via Kafka. Accessed by the endpoints below (read-only).
+> - `backoffice_audit_log` — trail of privileged administrative actions (CREATE/UPDATE/DEACTIVATE/CONFIG_UPDATE/KICK/REINSTATE), written by `backoffice-api` on every write operation. Covers ADMIN and OPERATIONS roles (OWASP ASVS V7).
 
-| Método | Endpoint | Descrição | Perfil |
+| Method | Endpoint | Description | Role |
 |---|---|---|---|
-| `GET` | `/api/audit/transactions/:id` | Histórico cronológico completo de uma transação | ADMIN, COMPLIANCE |
-| `GET` | `/api/audit` | Trilha de eventos com filtros (período, tipo, tenant, direção) | ADMIN, COMPLIANCE |
+| `GET` | `/api/audit/transactions/:id` | Complete chronological history of a transaction | ADMIN, COMPLIANCE |
+| `GET` | `/api/audit` | Event trail with filters (period, type, tenant, direction) | ADMIN, COMPLIANCE |
 
-### Eventos em Tempo Real (SSE)
+### Real-Time Events (SSE)
 
-| Método | Endpoint | Descrição | Perfil |
+| Method | Endpoint | Description | Role |
 |---|---|---|---|
-| `GET` | `/api/events/transactions` | Stream SSE de mudanças de status de depósitos e saques | ALL |
-| `GET` | `/api/events/circuit-breaker` | Stream SSE de kicks e recoveries de circuit breaker | ADMIN, OPERATIONS |
+| `GET` | `/api/events/transactions` | SSE stream of deposit and withdrawal status changes | ALL |
+| `GET` | `/api/events/circuit-breaker` | SSE stream of circuit breaker kicks and recoveries | ADMIN, OPERATIONS |
 
-**Comportamento:**
-- Protocolo: `text/event-stream` (Server-Sent Events) — HTTP/1.1, unidirecional (servidor → cliente)
-- Auth: JWT HttpOnly cookie (mesmo guard dos demais endpoints)
-- Escopo: eventos filtrados por `user.tenant_ids` — operador nunca recebe eventos de tenants fora do seu acesso
-- Cada evento SSE carrega campo `id` (`transaction_id` ou ULID), `data` como **array** de eventos (batching 500ms)
-- Batching: `bufferTime(500ms)` no pipeline RxJS — reduz re-renders de 50×/s para 2×/s em picos de carga
-- At-least-once delivery: cada evento SSE carrega `id`; browser reenvia `Last-Event-ID` na reconexão; endpoint replaya eventos do DB mais recentes que esse ID antes de retomar o stream ao vivo
-- Reconexão automática gerenciada pelo browser via `EventSource` nativo (sem biblioteca extra no frontend)
-- O frontend substitui polling por uma conexão SSE persistente por tela
+**Behavior:**
+- Protocol: `text/event-stream` (Server-Sent Events) — HTTP/1.1, unidirectional (server → client)
+- Auth: JWT HttpOnly cookie (same guard as other endpoints)
+- Scope: events filtered by `user.tenant_ids` — operator never receives events from tenants outside their access
+- Each SSE event carries `id` field (`transaction_id` or ULID), `data` as **array** of events (500ms batching)
+- Batching: `bufferTime(500ms)` in the RxJS pipeline — reduces re-renders from 50×/s to 2×/s under load spikes
+- At-least-once delivery: each SSE event carries `id`; browser resends `Last-Event-ID` on reconnection; endpoint replays events from DB more recent than that ID before resuming the live stream
+- Automatic reconnection managed by the browser via native `EventSource` (no extra library on the frontend)
+- The frontend replaces polling with one persistent SSE connection per screen
 
-**Fluxo interno (multi-instância):**
+**Internal flow (multi-instance):**
 ```
-Kafka event → Projection Handler (instância A)
-  ├── escrita no backoffice-db (durável)
+Kafka event → Projection Handler (instance A)
+  ├── write to backoffice-db (durable)
   └── EventsService.emit() → RedisPubSubService.publish("tx-events" | "cb-events")
                                        │
                        ┌───────────────┼───────────────┐
@@ -455,16 +455,16 @@ Kafka event → Projection Handler (instância A)
 
 ---
 
-## 9. Arquitetura de Módulos (NestJS)
+## 9. Module Architecture (NestJS)
 
-### Estrutura de diretórios
+### Directory structure
 
 ```
 src/
-├── main.ts                          → Bootstrap, guards globais, CORS, prefix /api
+├── main.ts                          → Bootstrap, global guards, CORS, prefix /api
 ├── app.module.ts                    → Root module, DataSources, global providers
 │
-├── common/                          → Código compartilhado cross-module
+├── common/                          → Cross-module shared code
 │   ├── decorators/                  → @Roles(), @Public(), @CurrentUser()
 │   ├── guards/                      → JwtAuthGuard, RolesGuard, TwoFactorGuard, MaintenanceGuard
 │   ├── interceptors/                → LoggingInterceptor, MaskingInterceptor, ErrorInterceptor
@@ -476,21 +476,21 @@ src/
 │
 ├── config/                          → Env validation (Zod), config schemas
 │
-├── infrastructure/                  → Adaptadores de infra
+├── infrastructure/                  → Infrastructure adapters
 │   ├── database/                    → TypeORM modules (backoffice-db + core-db)
 │   ├── cache/                       → Redis module, CacheService + ICacheService
 │   ├── kafka/                       → Kafka consumer/producer setup, base handlers
 │   ├── secrets/                     → AWS Secrets Manager module (ISecretsService, SecretsManagerService)
 │   └── observability/               → Winston config, dd-trace setup, health check
 │
-├── auth/                            → Autenticação e autorização
+├── auth/                            → Authentication and authorization
 │   ├── interfaces/                  → IAuthService, ITokenService, ITwoFactorService
 │   ├── controllers/                 → AuthController
 │   ├── services/                    → AuthService, TokenService, TwoFactorService
 │   ├── strategies/                  → JwtStrategy (Passport)
 │   └── dto/                         → LoginDto, RefreshDto, TwoFactorVerifyDto, ChangePasswordDto
 │
-├── organizations/                   → CRUD de organizações (core-db)
+├── organizations/                   → Organization CRUD (core-db)
 │   ├── interfaces/                  → IOrganizationRepository, IOrganizationService
 │   ├── controllers/                 → OrganizationController
 │   ├── services/                    → OrganizationService
@@ -498,7 +498,7 @@ src/
 │   ├── entities/                    → Organization entity
 │   └── dto/                         → CreateOrganizationDto, UpdateOrganizationDto
 │
-├── tenants/                         → Consulta e config de tenants (core-db)
+├── tenants/                         → Tenant query and config (core-db)
 │   ├── interfaces/                  → ITenantRepository, ITenantService
 │   ├── controllers/                 → TenantController
 │   ├── services/                    → TenantService
@@ -506,7 +506,7 @@ src/
 │   ├── entities/                    → Tenant, ProviderConfig, RoutingConfig, etc.
 │   └── dto/                         → Query DTOs, config DTOs
 │
-├── deposits/                        → Consulta de cash-in (backoffice-db)
+├── deposits/                        → Cash-in query (backoffice-db)
 │   ├── interfaces/                  → IDepositRepository, IDepositService
 │   ├── controllers/                 → DepositController
 │   ├── services/                    → DepositService
@@ -514,7 +514,7 @@ src/
 │   ├── entities/                    → CashinTransaction entity
 │   └── dto/                         → DepositsQueryDto
 │
-├── withdrawals/                     → Consulta de cash-out (backoffice-db)
+├── withdrawals/                     → Cash-out query (backoffice-db)
 │   ├── interfaces/                  → IWithdrawalRepository, IWithdrawalService
 │   ├── controllers/                 → WithdrawalController
 │   ├── services/                    → WithdrawalService
@@ -522,7 +522,7 @@ src/
 │   ├── entities/                    → CashoutTransaction entity
 │   └── dto/                         → WithdrawalsQueryDto
 │
-├── providers/                       → BaaS Providers (CRUD + credenciais SM) e Circuit Breaker
+├── providers/                       → BaaS Providers (CRUD + SM credentials) and Circuit Breaker
 │   ├── interfaces/                  → IProviderRepository, IProviderService, ICBService, ISecretsService
 │   ├── controllers/                 → ProviderController, CircuitBreakerController
 │   ├── services/                    → ProviderService, CircuitBreakerService
@@ -530,14 +530,14 @@ src/
 │   ├── entities/                    → ProviderConfig entity, CircuitBreakerEvent entity
 │   └── dto/                         → CreateProviderDto, UpdateProviderDto, CredentialsDto, KickDto, ReinstateDto, CBConfigDto
 │
-├── balancing/                       → Configuração de balanceamento
+├── balancing/                       → Balancing configuration
 │   ├── interfaces/                  → IBalancingRepository, IBalancingService
 │   ├── controllers/                 → BalancingController
 │   ├── services/                    → BalancingService
 │   ├── repositories/                → RoutingConfigRepository (core-db)
 │   └── dto/                         → UpdateBalancingDto
 │
-├── users/                           → Gestão de usuários internos
+├── users/                           → Internal user management
 │   ├── interfaces/                  → IUserRepository, IUserService
 │   ├── controllers/                 → UserController
 │   ├── services/                    → UserService
@@ -545,7 +545,7 @@ src/
 │   ├── entities/                    → BackofficeUser entity
 │   └── dto/                         → CreateUserDto, UpdateUserDto
 │
-├── audit/                           → Trilha de auditoria
+├── audit/                           → Audit trail
 │   ├── interfaces/                  → IAuditRepository, IAuditService
 │   ├── controllers/                 → AuditController
 │   ├── services/                    → AuditService
@@ -553,23 +553,23 @@ src/
 │   ├── entities/                    → TransactionAuditLedger entity
 │   └── dto/                         → AuditQueryDto
 │
-├── events/                          → SSE — stream de eventos em tempo real
+├── events/                          → SSE — real-time event stream
 │   ├── interfaces/                  → IEventsService
 │   ├── controllers/                 → EventsController (@Sse decorator)
-│   ├── services/                    → EventsService (RxJS Subject alimentado por Redis Pub/Sub)
+│   ├── services/                    → EventsService (RxJS Subject fed by Redis Pub/Sub)
 │   └── dto/                         → TransactionEventDto, CircuitBreakerEventDto
 │
-└── projections/                     → Kafka consumers → read model + emissão de eventos SSE
+└── projections/                     → Kafka consumers → read model + SSE event emission
     ├── interfaces/                  → IProjectionHandler
-    ├── cashin.projection.ts         → Consumer: transaction.cashin.*.v1 → atualiza DB + emite SSE
-    ├── cashout.projection.ts        → Consumer: transaction.cashout.*.v1 → atualiza DB + emite SSE
-    ├── circuit-breaker.projection.ts → Consumer: circuit_breaker.*.v1 → atualiza DB + emite SSE
-    └── dlq.projection.ts           → Consumer: webhook.dlq.v1 → alerta operacional
+    ├── cashin.projection.ts         → Consumer: transaction.cashin.*.v1 → updates DB + emits SSE
+    ├── cashout.projection.ts        → Consumer: transaction.cashout.*.v1 → updates DB + emits SSE
+    ├── circuit-breaker.projection.ts → Consumer: circuit_breaker.*.v1 → updates DB + emits SSE
+    └── dlq.projection.ts           → Consumer: webhook.dlq.v1 → operational alert
 ```
 
-### Padrão por módulo (Hexagonal Light + interfaces SOLID)
+### Pattern per module (Hexagonal Light + SOLID interfaces)
 
-Cada módulo de domínio segue o padrão:
+Each domain module follows the pattern:
 
 ```
 module/
@@ -577,97 +577,97 @@ module/
   │   ├── module-service.interface.ts    → IModuleService
   │   └── module-repository.interface.ts → IModuleRepository
   ├── controllers/
-  │   └── module.controller.ts           → Injeta IModuleService
+  │   └── module.controller.ts           → Injects IModuleService
   ├── services/
-  │   └── module.service.ts              → Implementa IModuleService, injeta IModuleRepository
+  │   └── module.service.ts              → Implements IModuleService, injects IModuleRepository
   ├── repositories/
-  │   └── module.repository.ts           → Implementa IModuleRepository, usa TypeORM
+  │   └── module.repository.ts           → Implements IModuleRepository, uses TypeORM
   ├── entities/
   │   └── entity.ts                      → TypeORM entity
   ├── dto/
   │   └── *.dto.ts                       → class-validator + class-transformer
-  └── module.module.ts                   → NestJS module com providers vinculados por token
+  └── module.module.ts                   → NestJS module with providers bound by token
 ```
 
-**Regra:** Controller nunca acessa Repository diretamente. Service é injetado via interface token (`provide: 'IModuleService', useClass: ModuleService`). Repository é injetado no Service via interface token. Testes unitários mocam as interfaces.
+**Rule:** Controller never accesses Repository directly. Service is injected via interface token (`provide: 'IModuleService', useClass: ModuleService`). Repository is injected into Service via interface token. Unit tests mock the interfaces.
 
 ---
 
-## 10. Segurança
+## 10. Security
 
-> **Baseline:** OWASP Top 10 (2021). Edge protection via WAF + API Gateway + ALB (`x-api-key` nativa do API Gateway gerenciada via Terraform/SRE — `backoffice-api` em subnet privada, não exposto diretamente à internet).
+> **Baseline:** OWASP Top 10 (2021). Edge protection via WAF + API Gateway + ALB (`x-api-key` native to API Gateway managed via Terraform/SRE — `backoffice-api` in private subnet, not directly exposed to the internet).
 
-| Mecanismo | Implementação |
+| Mechanism | Implementation |
 |---|---|
-| **Auth** | JWT com HttpOnly cookie (`Secure`, `SameSite=Strict`) — access token 15min + refresh token 2 dias. Payload inclui `user_id`, `email`, `organization_id`, `role`, `tenant_ids`, `jti` |
-| **2FA** | OTP 6 dígitos via email (AWS SES), obrigatório para perfis ADMIN e COMPLIANCE. Sessão temporária pré-2FA no Redis (TTL 5min). Max 3 reenvios por sessão |
+| **Auth** | JWT with HttpOnly cookie (`Secure`, `SameSite=Strict`) — access token 15min + refresh token 2 days. Payload includes `user_id`, `email`, `organization_id`, `role`, `tenant_ids`, `jti` |
+| **2FA** | 6-digit OTP via email (AWS SES), mandatory for ADMIN and COMPLIANCE roles. Pre-2FA temporary session in Redis (TTL 5min). Max 3 resends per session |
 | **Password hashing** | bcrypt (salt rounds: 12) |
-| **Password policy** | Mínimo 8 chars, maiúscula + minúscula + dígito + caractere especial, rejeita top 10k senhas comuns (OWASP) |
-| **Account lockout** | 5 tentativas de login falhas → bloqueio de 15min. Contador no Redis (`login_attempts:{email}`, TTL 15min) |
-| **Logout** | Blacklist JWT via Redis (`jwt_blacklist:{jti}`, TTL = tempo restante do token) + invalidação do refresh token |
-| **RBAC** | Guard NestJS que valida `role` do JWT contra decorador `@Roles()`. Deny-by-default |
-| **Multi-tenant isolation** | RLS em todas as tabelas do `backoffice-db`. User vê apenas tenants autorizados pelo ADMIN (todos da Organization ou subset específico via `tenant_ids`) |
-| **PII masking** | MaskingInterceptor global para responses. Logs nunca contêm PII em claro |
-| **Security headers** | Helmet.js com configuração OWASP (CSP, HSTS, X-Frame-Options, etc.) |
-| **CORS** | Restrito ao domínio do frontend (FRONTEND_URL) |
-| **Rate limiting** | ThrottlerModule global (100 req/min default) + WAF rate limit por IP na borda |
-| **Input validation** | ValidationPipe global (whitelist + forbidNonWhitelisted + transform) |
-| **Edge protection** | WAF (DDoS, OWASP rules) + API Gateway (throttling global, `x-api-key`) + ALB (VPC Link → ECS subnet privada) |
-| **Secrets** | Zero secrets em env vars em produção — AWS Secrets Manager. Credenciais de BaaS providers: IAM write-only (`PutSecretValue`/`CreateSecret`) no backoffice; IAM read-only (`GetSecretValue`) no core. HMAC keys e Bearer Tokens nunca passam pelo backoffice |
-| **Audit trail admin (OWASP ASVS V7)** | Toda ação de escrita privilegiada (CREATE, UPDATE, DEACTIVATE, CONFIG_UPDATE, KICK, REINSTATE, CREDENTIALS_ROTATE) gera registro append-only em `backoffice_audit_log` com `actor_id`, `actor_email`, `actor_role`, `resource_type`, `resource_id`, `payload_before`, `payload_after`, `ip_address`, `performed_at`. Campos sensíveis são sanitizados antes do log (`password_hash`, credenciais). Cobre todas as roles com escrita (ADMIN e OPERATIONS). Entidades afetadas persistem `deleted_at` + `deleted_by` no soft delete |
+| **Password policy** | Minimum 8 chars, uppercase + lowercase + digit + special character, rejects top 10k common passwords (OWASP) |
+| **Account lockout** | 5 failed login attempts → 15min lockout. Counter in Redis (`login_attempts:{email}`, TTL 15min) |
+| **Logout** | JWT blacklist via Redis (`jwt_blacklist:{jti}`, TTL = remaining token lifetime) + refresh token invalidation |
+| **RBAC** | NestJS guard that validates JWT `role` against `@Roles()` decorator. Deny-by-default |
+| **Multi-tenant isolation** | RLS on all `backoffice-db` tables. User sees only tenants authorized by ADMIN (all in Organization or specific subset via `tenant_ids`) |
+| **PII masking** | Global MaskingInterceptor for responses. Logs never contain plaintext PII |
+| **Security headers** | Helmet.js with OWASP configuration (CSP, HSTS, X-Frame-Options, etc.) |
+| **CORS** | Restricted to frontend domain (FRONTEND_URL) |
+| **Rate limiting** | Global ThrottlerModule (100 req/min default) + WAF rate limit per IP at the edge |
+| **Input validation** | Global ValidationPipe (whitelist + forbidNonWhitelisted + transform) |
+| **Edge protection** | WAF (DDoS, OWASP rules) + API Gateway (global throttling, `x-api-key`) + ALB (VPC Link → ECS private subnet) |
+| **Secrets** | Zero secrets in env vars in production — AWS Secrets Manager. BaaS provider credentials: IAM write-only (`PutSecretValue`/`CreateSecret`) on backoffice; IAM read-only (`GetSecretValue`) on core. HMAC keys and Bearer Tokens never pass through the backoffice |
+| **Admin audit trail (OWASP ASVS V7)** | Every privileged write action (CREATE, UPDATE, DEACTIVATE, CONFIG_UPDATE, KICK, REINSTATE, CREDENTIALS_ROTATE) generates an append-only record in `backoffice_audit_log` with `actor_id`, `actor_email`, `actor_role`, `resource_type`, `resource_id`, `payload_before`, `payload_after`, `ip_address`, `performed_at`. Sensitive fields are sanitized before logging (`password_hash`, credentials). Covers all write roles (ADMIN and OPERATIONS). Affected entities persist `deleted_at` + `deleted_by` on soft delete |
 
-### Scoping de acesso por Organization + tenant_ids
+### Access scoping by Organization + tenant_ids
 
-O ADMIN controla o acesso granular de cada usuário:
+ADMIN controls granular access for each user:
 
-1. Login retorna JWT com `{ user_id, organization_id, role, tenant_ids[] }`
-2. `tenant_ids[]` é calculado no login:
-   - Se `backoffice_users.tenant_ids` está **vazio** (`{}`): `SELECT id FROM tenants WHERE organization_id = $1 AND active = true` → acesso a **todos** os tenants da Organization
-   - Se `backoffice_users.tenant_ids` está **preenchido**: usa a lista direta (validada como subconjunto dos tenants ativos da Organization)
-3. Todo endpoint que acessa dados por tenant valida `tenant_id ∈ user.tenant_ids`
-4. RLS no `backoffice-db`: `SET LOCAL app.current_tenant_id` por request (para queries de transações)
-5. Queries ao `core-db`: filtro explícito `WHERE organization_id = $1` (sem RLS no core-db para simplificar, já que o gateway também lê core-db)
+1. Login returns JWT with `{ user_id, organization_id, role, tenant_ids[] }`
+2. `tenant_ids[]` is computed at login:
+   - If `backoffice_users.tenant_ids` is **empty** (`{}`): `SELECT id FROM tenants WHERE organization_id = $1 AND active = true` → access to **all** tenants in the Organization
+   - If `backoffice_users.tenant_ids` is **populated**: uses the direct list (validated as a subset of active tenants in the Organization)
+3. Every endpoint that accesses data by tenant validates `tenant_id ∈ user.tenant_ids`
+4. RLS on `backoffice-db`: `SET LOCAL app.current_tenant_id` per request (for transaction queries)
+5. Queries to `core-db`: explicit filter `WHERE organization_id = $1` (no RLS on core-db for simplicity, since the gateway also reads core-db)
 
-> **Regra de negócio:** o ADMIN define no cadastro/edição do usuário se ele vê todos os tenants (tenant_ids vazio) ou apenas tenants específicos (tenant_ids preenchido). Tenants listados devem pertencer à Organization do usuário — a API valida isso no `POST /users` e `PUT /users/:id`.
+> **Business rule:** ADMIN defines at user registration/editing whether they see all tenants (empty tenant_ids) or only specific tenants (populated tenant_ids). Listed tenants must belong to the user's Organization — the API validates this on `POST /users` and `PUT /users/:id`.
 
 ---
 
-## 11. Propagação de Configuração
+## 11. Configuration Propagation
 
-Quando o operador atualiza uma configuração no backoffice (pesos, limites, provider ativo/inativo):
+When the operator updates a configuration in the backoffice (weights, limits, active/inactive provider):
 
 ```
-1. backoffice-api valida input (DTO + business rules)
-2. Escreve no core-db (fonte de verdade)
-3. Atualiza cache Redis (fast-path para o core)
-4. Finaliza a propagação no Redis (sem fanout Kafka de configuração)
+1. backoffice-api validates input (DTO + business rules)
+2. Writes to core-db (source of truth)
+3. Updates Redis cache (fast-path for core)
+4. Finalizes propagation in Redis (no Kafka config fanout)
 ```
 
-Este fluxo garante:
-- **Consistência:** core-db é a fonte de verdade
-- **Performance:** Redis serve as leituras do core em microsegundos
-- **Desacoplamento:** backoffice não faz chamadas HTTP síncronas ao core
-- **Auditabilidade:** trilha via audit log e histórico operacional no próprio backoffice
+This flow ensures:
+- **Consistency:** core-db is the source of truth
+- **Performance:** Redis serves core reads in microseconds
+- **Decoupling:** backoffice does not make synchronous HTTP calls to the core
+- **Auditability:** trail via audit log and operational history in the backoffice itself
 
-### 11.1 Resiliência Redis (retry + outbox + resync)
+### 11.1 Redis Resilience (retry + outbox + resync)
 
-Implementação atual para falhas de Redis durante propagação de configuração:
+Current implementation for Redis failures during configuration propagation:
 
-- **Retry local com backoff+jitter** em todas as operações de escrita Redis do módulo de propagação (`TenantConfigPropagationService`).
-- **Contrato forte (rollback + 500)** para fluxos críticos de criação e rotação de token:
-  - criação de tenant
-  - criação de provider
-  - rotação de bearer token de tenant
-- **Contrato com reconciliação operacional** para updates/deletes de configuração:
-  - em falha de Redis após persistência no `core-db`, registra item na tabela `redis_propagation_outbox` (`core-db`) e mantém rastreabilidade por log estruturado.
-- **Resync operacional explícito** via endpoints administrativos:
+- **Local retry with backoff+jitter** on all Redis write operations in the propagation module (`TenantConfigPropagationService`).
+- **Strong contract (rollback + 500)** for critical creation and token rotation flows:
+  - tenant creation
+  - provider creation
+  - tenant bearer token rotation
+- **Contract with operational reconciliation** for configuration updates/deletes:
+  - on Redis failure after persistence in `core-db`, records item in `redis_propagation_outbox` table (`core-db`) and maintains traceability via structured log.
+- **Explicit operational resync** via administrative endpoints:
   - `POST /api/tenants/:id/resync-redis`
   - `POST /api/tenants/:tid/providers/resync-redis`
-- **Observabilidade mínima**:
-  - evento de log `redis_propagation_failed`
-  - métrica operacional via `GET /api/health/redis-propagation`
+- **Minimum observability**:
+  - log event `redis_propagation_failed`
+  - operational metric via `GET /api/health/redis-propagation`
 
-Variáveis de tuning do retry:
+Retry tuning variables:
 
 - `REDIS_PROPAGATION_MAX_RETRIES`
 - `REDIS_PROPAGATION_BASE_DELAY_MS`
@@ -675,9 +675,9 @@ Variáveis de tuning do retry:
 
 ---
 
-## 12. Infraestrutura e Deploy
+## 12. Infrastructure and Deploy
 
-### Docker Compose (desenvolvimento local)
+### Docker Compose (local development)
 
 ```yaml
 services:
@@ -694,7 +694,7 @@ services:
       KAFKA_BROKERS: redpanda:9092
       JWT_SECRET: dev-secret
       NODE_ENV: development
-      AWS_ENDPOINT_URL: http://localstack:4566   # Secrets Manager emulado
+      AWS_ENDPOINT_URL: http://localstack:4566   # Emulated Secrets Manager
       AWS_REGION: sa-east-1
       SMTP_HOST: mailhog
       SMTP_PORT: 1025
@@ -739,22 +739,22 @@ services:
     image: mailhog/mailhog:latest
     ports:
       - "1025:1025"   # SMTP
-      - "8025:8025"   # Web UI para inspeção de emails 2FA
+      - "8025:8025"   # Web UI for 2FA email inspection
 ```
 
-### Produção (AWS)
+### Production (AWS)
 
-| Componente | Serviço AWS |
+| Component | AWS Service |
 |---|---|
 | backoffice-api | ECS Fargate |
 | backoffice-db | RDS PostgreSQL 16 |
-| core-db | RDS PostgreSQL 16 (compartilhado com hub-gateway read) |
-| Redis (core) | ElastiCache Redis 7 (compartilhado com core) |
-| Valkey (auth) | ElastiCache for Valkey (exclusivo backoffice-api, AOF habilitado) |
-| Valkey (Pub/Sub eventos) | ElastiCache for Valkey (isolado, sem persistência) |
-| Kafka | MSK (compartilhado com core) |
-| Observabilidade | DataDog (agent no ECS, logs via CloudWatch → DataDog) |
-| IaC | Terraform (responsabilidade SRE) |
+| core-db | RDS PostgreSQL 16 (shared with hub-gateway read) |
+| Redis (core) | ElastiCache Redis 7 (shared with core) |
+| Valkey (auth) | ElastiCache for Valkey (backoffice-api exclusive, AOF enabled) |
+| Valkey (Pub/Sub events) | ElastiCache for Valkey (isolated, no persistence) |
+| Kafka | MSK (shared with core) |
+| Observability | DataDog (agent on ECS, logs via CloudWatch → DataDog) |
+| IaC | Terraform (SRE responsibility) |
 
 ### CI/CD — Bitbucket Pipelines
 
@@ -782,124 +782,124 @@ Merge to main:
 
 ---
 
-## 13. Estratégia de Testes
+## 13. Testing Strategy
 
-### Abordagem
+### Approach
 
-Toda regra de negócio entregue vem acompanhada do teste que a valida, cobrindo o caminho de sucesso e ao menos um caso de rejeição. A ordem em que teste e implementação são escritos fica a critério de quem implementa — o que é verificado no gate é a cobertura da regra, não a sequência.
+Every delivered business rule comes with the test that validates it, covering the success path and at least one rejection case. The order in which test and implementation are written is at the implementer's discretion — what the gate verifies is rule coverage, not sequence.
 
-### Tipos de testes
+### Test types
 
-| Tipo | Ferramenta | Target | DB |
+| Type | Tool | Target | DB |
 |---|---|---|---|
 | **Unit** | Jest | Services, guards, interceptors, validators | Mocks (interfaces) |
-| **Integration** | Jest + SQLite in-memory | Repositories, modules com DI real | SQLite |
-| **E2E** | Jest + Supertest | Endpoints completos (HTTP → DB → Response) | SQLite in-memory |
+| **Integration** | Jest + SQLite in-memory | Repositories, modules with real DI | SQLite |
+| **E2E** | Jest + Supertest | Complete endpoints (HTTP → DB → Response) | SQLite in-memory |
 
-### Cobertura
+### Coverage
 
-| Escopo | Mínimo |
+| Scope | Minimum |
 |---|---|
 | Global (branches, functions, lines, statements) | 90% |
 | Services (`*.service.ts`) | 90% |
 | Repositories (`*.repository.ts`) | 90% |
-| Controllers | 85% (lógica delegada ao service) |
-| DTOs / Entities | Cobertura indireta via integration/e2e |
+| Controllers | 85% (logic delegated to service) |
+| DTOs / Entities | Indirect coverage via integration/e2e |
 
-### O que testar com prioridade
+### Priority test areas
 
 - **Auth flow:** login, refresh, logout, JWT validation, blacklist
-- **2FA flow:** login → OTP email → verify → JWT; reenvio; max 3 tentativas; sessão expirada
-- **Account lockout:** 5 falhas → bloqueio 15min; reset após bloqueio
-- **Password policy:** rejeição de senhas fracas; hash bcrypt correto
-- **RBAC:** cada endpoint valida role corretamente (deny-by-default)
-- **Kafka consumers:** projeções inserem/atualizam corretamente no read model
+- **2FA flow:** login → OTP email → verify → JWT; resend; max 3 attempts; expired session
+- **Account lockout:** 5 failures → 15min lockout; reset after lockout
+- **Password policy:** weak password rejection; correct bcrypt hash
+- **RBAC:** each endpoint validates role correctly (deny-by-default)
+- **Kafka consumers:** projections insert/update correctly in read model
 - **Config propagation:** core-db → Redis
-- **Organization scoping:** user não vê tenants de outra organization; user com tenant_ids restrito não vê tenants fora da lista
-- **RLS:** queries filtradas por tenant_id
-- **BaaS Providers:** credenciais armazenadas no SM, nunca retornadas em claro; rotação de credenciais; test-connection
+- **Organization scoping:** user does not see tenants from another organization; user with restricted tenant_ids does not see tenants outside the list
+- **RLS:** queries filtered by tenant_id
+- **BaaS Providers:** credentials stored in SM, never returned in plaintext; credential rotation; test-connection
 
 ### Benchmarking (hot spots only)
 
 - Kafka consumer throughput (events/second)
-- Endpoint de listagem com paginação (deposits, withdrawals) sob carga
-- Redis write latency para config propagation
+- Listing endpoint with pagination (deposits, withdrawals) under load
+- Redis write latency for config propagation
 
-### Fuzzing (áreas críticas)
+### Fuzzing (critical areas)
 
-- DTOs de input (LoginDto, CreateUserDto, UpdateBalancingDto)
+- Input DTOs (LoginDto, CreateUserDto, UpdateBalancingDto)
 - Kafka event payload parsing (envelope validation)
-- Auth token parsing e validation
+- Auth token parsing and validation
 
 ---
 
-## 14. Requisitos Não-Funcionais
+## 14. Non-Functional Requirements
 
-| Requisito | Meta | Prioridade |
+| Requirement | Target | Priority |
 |---|---|---|
 | **P0 — Correctness** | | |
-| Multi-tenant isolation | Zero leak entre tenants (RLS + Organization scoping) | P0 |
-| Kafka consumer idempotência | Reprocessamento de offset não gera duplicatas | P0 |
-| Config propagation atomicidade | core-db + Redis em sequência; rollback quando aplicável | P0 |
+| Multi-tenant isolation | Zero leak between tenants (RLS + Organization scoping) | P0 |
+| Kafka consumer idempotency | Offset reprocessing does not generate duplicates | P0 |
+| Config propagation atomicity | core-db + Redis in sequence; rollback when applicable | P0 |
 | **P1 — Regression Prevention** | | |
-| Test coverage | ≥ 90% nas classes de regra de negócio | P1 |
-| CI pipeline | Lint + test + coverage em todo push | P1 |
+| Test coverage | ≥ 90% on business rule classes | P1 |
+| CI pipeline | Lint + test + coverage on every push | P1 |
 | Pre-commit hooks | Husky: lint-staged + test | P1 |
 | **P2 — Security** | | |
-| JWT HttpOnly cookie | Token não acessível via JavaScript | P2 |
-| 2FA via email | OTP 6 dígitos, obrigatório para ADMIN/COMPLIANCE | P2 |
-| Account lockout | 5 tentativas falhas → bloqueio 15min | P2 |
-| PII masking | Nenhum dado pessoal em logs ou responses não autorizadas | P2 |
-| Password policy | bcrypt salt 12, min 8 chars, complexidade OWASP, rejeita top 10k | P2 |
-| RBAC enforcement | Backend valida role em todo endpoint (deny-by-default) | P2 |
+| JWT HttpOnly cookie | Token not accessible via JavaScript | P2 |
+| Email 2FA | 6-digit OTP, mandatory for ADMIN/COMPLIANCE | P2 |
+| Account lockout | 5 failed attempts → 15min lockout | P2 |
+| PII masking | No personal data in logs or unauthorized responses | P2 |
+| Password policy | bcrypt salt 12, min 8 chars, OWASP complexity, rejects top 10k | P2 |
+| RBAC enforcement | Backend validates role on every endpoint (deny-by-default) | P2 |
 | Security headers | Helmet.js — CSP, HSTS, X-Frame-Options, etc. | P2 |
-| Edge protection | WAF + API Gateway + ALB (subnet privada, `x-api-key` via Terraform/SRE) | P2 |
+| Edge protection | WAF + API Gateway + ALB (private subnet, `x-api-key` via Terraform/SRE) | P2 |
 | **P3 — Quality** | | |
-| Structured logging | JSON com trace_id, tenant_id, user_id | P3 |
-| Error handling | HttpExceptionFilter global, erros tipados, sem stack traces em prod | P3 |
-| API documentation | Swagger/OpenAPI auto-gerado via decorators | P3 |
+| Structured logging | JSON with trace_id, tenant_id, user_id | P3 |
+| Error handling | Global HttpExceptionFilter, typed errors, no stack traces in prod | P3 |
+| API documentation | Swagger/OpenAPI auto-generated via decorators | P3 |
 | Code style | ESLint + Prettier + Husky (Conventional Commits) | P3 |
 | **P4 — Performance** | | |
-| API latency P95 | < 500ms (consultas paginadas no read model) | P4 |
-| Kafka consumer lag | < 5s (projeções near real-time) | P4 |
-| SSE latência de entrega | < 2s do evento Kafka ao cliente conectado | P4 |
+| API latency P95 | < 500ms (paginated read model queries) | P4 |
+| Kafka consumer lag | < 5s (near real-time projections) | P4 |
+| SSE delivery latency | < 2s from Kafka event to connected client | P4 |
 | Health check | < 100ms | P4 |
-| Disponibilidade | 99.5% (backoffice não é caminho crítico) | P4 |
+| Availability | 99.5% (backoffice is not critical path) | P4 |
 
 ---
 
-## 15. Fases de Implementação
+## 15. Implementation Phases
 
-As fases e milestones deste serviço são geradas por `/wiz-phases` e `/wiz-milestones` a partir deste PRD, e ficam em `.wiz/backoffice-api/phases/`. Este documento define **o que** entregar e sob quais critérios; o **como** e em que ordem é resultado do planejamento.
+Phases and milestones for this service are generated by `/wiz-phases` and `/wiz-milestones` from this PRD, and live in `.wiz/backoffice-api/phases/`. This document defines **what** to deliver and under which criteria; **how** and in what order is the result of planning.
 
-Restrições que o planejamento deve respeitar:
+Constraints that planning must respect:
 
-- A fundação (scaffold, persistência, autenticação) precede qualquer feature de consulta ou configuração.
-- A projeção do read model depende da fundação e é pré-requisito das telas operacionais.
-- Segurança é P1, empatada com testes — nenhuma fase entrega endpoint sem autenticação e autorização.
+- Foundation (scaffold, persistence, authentication) precedes any query or configuration feature.
+- Read model projection depends on foundation and is a prerequisite for operational screens.
+- Security is P1, tied with tests — no phase delivers an endpoint without authentication and authorization.
 
 ## 16. Dev Seed Strategy
 
-> O dev seed é parte obrigatória da Fase 1. Seu objetivo é permitir que qualquer desenvolvedor dos outros microservices (`hub-gateway`, `cashin-service`, `cashout-service`, `webhook-service`, `audit-worker`) suba a stack localmente usando o `backoffice-api` como fonte de dados de configuração, sem precisar inserir dados manualmente.
+> The dev seed is a mandatory part of Phase 1. Its goal is to allow any developer on the other microservices (`hub-gateway`, `cashin-service`, `cashout-service`, `webhook-service`, `audit-worker`) to bring up the local stack using `backoffice-api` as the configuration data source, without manually inserting data.
 
-### Como usar (outros times)
+### How to use (other teams)
 
 ```bash
-# 1. Subir a infra do backoffice
+# 1. Start backoffice infrastructure
 docker compose up -d
 
-# 2. Rodar migrations + seed completo
+# 2. Run migrations + full seed
 npm run migration:run
-npm run seed:all    # equivale a: seed:db + seed:redis + seed:secrets
+npm run seed:all    # equivalent to: seed:db + seed:redis + seed:secrets
 ```
 
-Após esses comandos, o `core-db`, Redis e LocalStack estarão populados com os dados de dev documentados abaixo. Os valores são fixos e versionados — não mudam entre execuções.
+After these commands, `core-db`, Redis, and LocalStack will be populated with the dev data documented below. Values are fixed and versioned — they do not change between runs.
 
 ---
 
-### 16.1 Seed do `core-db` (Migration seed)
+### 16.1 `core-db` Seed (Migration seed)
 
-IDs fixos para dev — garantem que outros serviços possam referenciar por UUID sem lookup:
+Fixed IDs for dev — ensure other services can reference by UUID without lookup:
 
 ```sql
 -- Organization
@@ -907,12 +907,12 @@ INSERT INTO organizations (id, name, slug, active) VALUES
   ('00000000-0000-0000-0000-000000000001', 'Acme', 'acme', true);
 
 -- Tenants
--- ATENÇÃO: webhook_url NÃO é o endpoint que recebe callbacks dos provedores BaaS.
--- Os BaaS sempre chamam o webhook-service em POST /webhook/{provider} (URL fixa do Hub).
--- webhook_url é o endereço do PARCEIRO (Vertex) para onde o webhook-service
--- envia as notificações de saída (outbound) após processar o callback do BaaS.
--- Fluxo: BaaS → webhook-service → lê webhook_url do Redis → POST {webhook_url} + HMAC → Vertex
--- Em dev, aponta para um servidor mock local que simula o endpoint receptor da Vertex.
+-- NOTE: webhook_url is NOT the endpoint that receives BaaS provider callbacks.
+-- BaaS providers always call webhook-service at POST /webhook/{provider} (fixed Hub URL).
+-- webhook_url is the PARTNER (Vertex) address where webhook-service
+-- sends outbound notifications after processing the BaaS callback.
+-- Flow: BaaS → webhook-service → reads webhook_url from Redis → POST {webhook_url} + HMAC → Vertex
+-- In dev, points to a local mock server that simulates the Vertex receiver endpoint.
 INSERT INTO tenants (id, organization_id, name, slug, webhook_url, active) VALUES
   ('00000000-0000-0000-0000-000000000010', '00000000-0000-0000-0000-000000000001',
    'Acme', 'acme', 'http://mock-partner:3100/webhook/acme', true),
@@ -924,14 +924,14 @@ INSERT INTO provider_configs (tenant_id, provider_id, base_url, active) VALUES
   ('00000000-0000-0000-0000-000000000010', 'aurora', 'http://mock-aurora:8080', true),
   ('00000000-0000-0000-0000-000000000010', 'nimbus', 'http://mock-nimbus:8080', true);
 
--- Routing configs — pesos iniciais (CASHIN + CASHOUT)
+-- Routing configs — initial weights (CASHIN + CASHOUT)
 INSERT INTO routing_configs (tenant_id, provider_id, flow_type, position, weight, mode) VALUES
   ('00000000-0000-0000-0000-000000000010', 'aurora', 'CASHIN',  1, 70, 'MANUAL'),
   ('00000000-0000-0000-0000-000000000010', 'nimbus', 'CASHIN',  2, 30, 'MANUAL'),
   ('00000000-0000-0000-0000-000000000010', 'aurora', 'CASHOUT', 1, 70, 'MANUAL'),
   ('00000000-0000-0000-0000-000000000010', 'nimbus', 'CASHOUT', 2, 30, 'MANUAL');
 
--- Circuit Breaker configs — thresholds padrão
+-- Circuit Breaker configs — default thresholds
 INSERT INTO circuit_breaker_configs
   (tenant_id, provider_id, flow_type, consecutive_threshold, suspension_minutes) VALUES
   ('00000000-0000-0000-0000-000000000010', 'aurora', 'CASHIN',  20, 30),
@@ -945,7 +945,7 @@ INSERT INTO tenant_limits
   ('00000000-0000-0000-0000-000000000010', 10.00, 50000.00, 20.00, 20000.00, 100000.00);
 
 -- Tenant auth — sha256('sk-dev-acme-localtoken01')
--- Token bruto fica no LocalStack (ver 16.3)
+-- Raw token lives in LocalStack (see 16.3)
 INSERT INTO tenant_auth (tenant_id, token_hash, token_hint, active) VALUES
   ('00000000-0000-0000-0000-000000000010',
    'a3f1e2d4b5c6789012345678abcdef0123456789abcdef0123456789abcdef01',
@@ -954,11 +954,11 @@ INSERT INTO tenant_auth (tenant_id, token_hash, token_hint, active) VALUES
 
 ---
 
-### 16.2 Seed do `backoffice-db` (Migration seed)
+### 16.2 `backoffice-db` Seed (Migration seed)
 
 ```sql
--- Usuário ADMIN padrão
--- Senha: Admin@123456 (bcrypt hash — alterar no primeiro login em produção)
+-- Default ADMIN user
+-- Password: Admin@123456 (bcrypt hash — change on first login in production)
 INSERT INTO backoffice_users
   (id, organization_id, email, name, role, tenant_ids, active, password_hash) VALUES
   ('00000000-0000-0000-0000-000000000100',
@@ -969,17 +969,17 @@ INSERT INTO backoffice_users
 
 ---
 
-### 16.3 Seed do Redis (`npm run seed:redis`)
+### 16.3 Redis Seed (`npm run seed:redis`)
 
-Script executado após as migrations. Lê os dados do `core-db` e popula as chaves exatamente como o backoffice-api faria ao salvar uma configuração via endpoint. Garante que `hub-gateway`, `cashin-service` e `cashout-service` encontrem os dados no Redis no primeiro request.
+Script executed after migrations. Reads data from `core-db` and populates keys exactly as backoffice-api would when saving a configuration via endpoint. Ensures `hub-gateway`, `cashin-service`, and `cashout-service` find data in Redis on the first request.
 
-Chaves populadas (tenant_id = `00000000-0000-0000-0000-000000000010`):
+Populated keys (tenant_id = `00000000-0000-0000-0000-000000000010`):
 
 ```
 tenant:config:00000000-0000-0000-0000-000000000010
   → { "webhook_url": "http://mock-partner:3100/webhook/acme",
-      -- webhook_url = endereço do PARCEIRO (Vertex) para notificações outbound
-      -- NÃO é o endpoint dos provedores BaaS. Os BaaS sempre chamam /webhook/{provider} no Hub.
+      -- webhook_url = PARTNER (Vertex) address for outbound notifications
+      -- NOT the BaaS provider endpoint. BaaS providers always call /webhook/{provider} on the Hub.
       "active": true, "rate_limit_rps": 100, "ip_whitelist": [] }
 
 tenant:limits:00000000-0000-0000-0000-000000000010
@@ -998,32 +998,32 @@ routing:weights:00000000-0000-0000-0000-000000000010:CASHOUT
 
 auth:token:a3f1e2d4b5c6789012345678abcdef0123456789abcdef0123456789abcdef01
   → "00000000-0000-0000-0000-000000000010"
-  TTL: 300s (5 min — renovado automaticamente no lookup do hub-gateway)
+  TTL: 300s (5 min — automatically renewed on hub-gateway lookup)
 ```
 
 ---
 
-### 16.4 Seed do LocalStack — Secrets Manager (`npm run seed:secrets`)
+### 16.4 LocalStack Seed — Secrets Manager (`npm run seed:secrets`)
 
-Script shell ou Node.js que cria os secrets no LocalStack via AWS CLI ou SDK. Esses secrets são lidos pelos serviços core em dev.
+Shell or Node.js script that creates secrets in LocalStack via AWS CLI or SDK. These secrets are read by core services in dev.
 
 ```bash
-# Bearer Token do Acme (lido pelo hub-gateway no Secrets Manager como fallback)
+# Acme Bearer Token (read by hub-gateway in Secrets Manager as fallback)
 aws --endpoint-url=http://localhost:4566 secretsmanager create-secret \
   --name "payflow/dev/tenants/acme/api-key" \
   --secret-string "sk-dev-acme-localtoken01"
 
-# Credentials mock do provedor Aurora (lidas pelo cashin-service e cashout-service)
+# Mock Aurora provider credentials (read by cashin-service and cashout-service)
 aws --endpoint-url=http://localhost:4566 secretsmanager create-secret \
   --name "payflow/dev/tenants/acme/providers/aurora" \
   --secret-string '{"api_key":"dev-aurora-key-001","api_secret":"dev-aurora-secret-001","client_id":"aurora-dev-client"}'
 
-# Credentials mock do provedor Nimbus (lidas pelo cashin-service e cashout-service)
+# Mock Nimbus provider credentials (read by cashin-service and cashout-service)
 aws --endpoint-url=http://localhost:4566 secretsmanager create-secret \
   --name "payflow/dev/tenants/acme/providers/nimbus" \
   --secret-string '{"api_key":"dev-nimbus-key-001","api_secret":"dev-nimbus-secret-001","client_id":"nimbus-dev-client"}'
 
-# HMAC key do Acme para validação de webhooks (lida pelo webhook-service)
+# Acme HMAC key for webhook validation (read by webhook-service)
 aws --endpoint-url=http://localhost:4566 secretsmanager create-secret \
   --name "payflow/dev/tenants/acme/hmac-key" \
   --secret-string "dev-hmac-key-acme-local-0001"
@@ -1031,9 +1031,9 @@ aws --endpoint-url=http://localhost:4566 secretsmanager create-secret \
 
 ---
 
-### 16.5 Referência rápida para outros times
+### 16.5 Quick reference for other teams
 
-| Dado | Valor dev |
+| Data | Dev value |
 |---|---|
 | **Tenant ID (Acme)** | `00000000-0000-0000-0000-000000000010` |
 | **Organization ID (Acme)** | `00000000-0000-0000-0000-000000000001` |
@@ -1047,55 +1047,55 @@ aws --endpoint-url=http://localhost:4566 secretsmanager create-secret \
 | **backoffice-api** | `http://localhost:3001` |
 | **Admin login** | `admin@acme.local` / `Admin@123456` |
 | **MailHog (2FA emails)** | `http://localhost:8025` |
-| **mock-partner (simula Vertex)** | `http://mock-partner:3100` |
+| **mock-partner (simulates Vertex)** | `http://mock-partner:3100` |
 
-> **Nota:** o Bearer Token `sk-dev-acme-localtoken01` é exclusivo para ambiente de desenvolvimento. Nunca usar em staging ou produção. O token e seu hash são fixos para reprodutibilidade — qualquer desenvolvedor pode referenciar o `tenant_id` por UUID sem lookup.
+> **Note:** Bearer Token `sk-dev-acme-localtoken01` is exclusive to the development environment. Never use in staging or production. The token and its hash are fixed for reproducibility — any developer can reference `tenant_id` by UUID without lookup.
 
-> **Sobre `webhook_url`:** o campo `webhook_url` no tenant **não é** o endpoint que recebe callbacks dos provedores BaaS. Os BaaS (Aurora, Nimbus) sempre chamam o `webhook-service` em `POST /webhook/{provider}` — URL fixa do Hub. O `webhook_url` é o endereço do **parceiro** (Vertex) para onde o `webhook-service` envia as notificações de saída após processar o callback do BaaS. Fluxo: `BaaS → webhook-service → lê webhook_url do Redis → POST {webhook_url} + HMAC → Vertex`. Em dev, `mock-partner` é um servidor HTTP simples (ex: [Mockoon](https://mockoon.com/) ou `json-server`) que simula o receptor da Vertex.
+> **About `webhook_url`:** the `webhook_url` field on the tenant **is not** the endpoint that receives BaaS provider callbacks. BaaS providers (Aurora, Nimbus) always call `webhook-service` at `POST /webhook/{provider}` — fixed Hub URL. `webhook_url` is the **partner** (Vertex) address where `webhook-service` sends outbound notifications after processing the BaaS callback. Flow: `BaaS → webhook-service → reads webhook_url from Redis → POST {webhook_url} + HMAC → Vertex`. In dev, `mock-partner` is a simple HTTP server (e.g. [Mockoon](https://mockoon.com/) or `json-server`) that simulates the Vertex receiver.
 
 ---
 
 ## 17. Open Questions
 
-Todas as questões foram resolvidas. Registradas abaixo para rastreabilidade.
+All questions have been resolved. Recorded below for traceability.
 
-| # | Questão | Decisão | Impacto |
+| # | Question | Decision | Impact |
 |---|---|---|---|
-| 1 | Política de retenção do read model (`cashin_transactions`, `cashout_transactions`) | **Fora do escopo de V1.** V2 implementará via EventBridge Scheduler + Lambda (sem lock distribuído na aplicação). Sem purge em V1 — tabelas crescem sem limite até V2 ser entregue | Movido para Non-Goals |
-| 2 | `GET /providers/:id/performance` — on-the-fly ou pré-computado? | **On-the-fly em V1** (volume baixo). **V2** evolui para tabela pré-computada com job de agregação periódico. | Sem impacto no schema V1. Nota adicionada no endpoint |
-| 3 | Atualização em tempo real das telas de transações | **SSE (Server-Sent Events)** — unidirecional, sem polling. `EventsService` alimentado por Redis Pub/Sub (Valkey) para fanout multi-instância; `bufferTime(500ms)` para batching; `Last-Event-ID` para at-least-once. | `events/` module + 2 endpoints SSE na Fase 2 |
+| 1 | Read model retention policy (`cashin_transactions`, `cashout_transactions`) | **Out of V1 scope.** V2 will implement via EventBridge Scheduler + Lambda (no distributed lock in the application). No purge in V1 — tables grow without limit until V2 is delivered | Moved to Non-Goals |
+| 2 | `GET /providers/:id/performance` — on-the-fly or pre-computed? | **On-the-fly in V1** (low volume). **V2** evolves to pre-computed table with periodic aggregation job. | No impact on V1 schema. Note added to endpoint |
+| 3 | Real-time transaction screen updates | **SSE (Server-Sent Events)** — unidirectional, no polling. `EventsService` fed by Redis Pub/Sub (Valkey) for multi-instance fanout; `bufferTime(500ms)` for batching; `Last-Event-ID` for at-least-once. | `events/` module + 2 SSE endpoints in Phase 2 |
 
 ---
 
 ## 18. Appendix
 
-### 18.1 Decisões de design
+### 18.1 Design decisions
 
-| Decisão | Opção escolhida | Justificativa |
+| Decision | Chosen option | Rationale |
 |---|---|---|
-| Scaffold | Limpo (descartar Palmtree) | Módulos do boilerplate não se aplicam ao Hub |
-| Dual DataSource | Primária (backoffice-db) + Named (core-db) | Separação clara de responsabilidades |
-| Kafka client | @nestjs/microservices + KafkaJS | Integração nativa com NestJS, menos boilerplate |
-| Docker Compose | Stack completa (2xPG + Redis + Redpanda + LocalStack + MailHog) | Permite testar Kafka, Secrets Manager e 2FA localmente |
-| Testes | Unit (mock) + Integration (SQLite) + E2E | 90% de cobertura na regra de negócio |
-| Observabilidade | Winston + dd-trace-js (sem Pino/Prometheus) | DataDog como stack única do ecossistema |
-| CI/CD | Bitbucket Pipelines + Husky | Alinhado ao ecossistema multi-repo |
-| Admin seed | Migration default | Garantia de primeiro acesso sem script manual |
-| Arquitetura | Hexagonal Light + interfaces SOLID | Desacoplamento completo com testabilidade |
-| Organization | Tabela `organizations` em V1 | Necessidade real de agrupamento; aditiva e sem impacto no core |
-| 2FA | OTP via email (AWS SES), obrigatório ADMIN/COMPLIANCE | Segurança OWASP sem fricção para perfis operacionais |
-| JWT refresh | 2 dias (não 7) | Equilíbrio entre segurança e UX; alinhado ao ecossistema |
-| Secrets Manager | infrastructure/secrets/ com LocalStack em dev | Credenciais de BaaS providers nunca em banco, cache ou logs |
-| Tenants CRUD | POST/PUT/DELETE com geração de Bearer Token | CRUD completo em V1 — onboarding de novos tenants pelo operador |
-| Dev Seed | UUIDs fixos + `seed:all` (DB + Redis + Secrets) | Outros times (hub-gateway, cashin-service, etc.) sobem com dados prontos sem configuração manual |
-| UUIDs de dev | Fixos e versionados na migration seed | Reprodutibilidade — outros services referenciam tenant_id por UUID sem lookup |
-| SSE vs. WebSocket | SSE (`text/event-stream`) | Unidirecional (servidor → cliente) — suficiente para notificações de transação. Sem overhead de full-duplex. Reconexão nativa do browser via `EventSource` |
-| SSE fanout multi-instância | Redis Pub/Sub via Valkey isolado (`REDIS_PUBSUB_URL`) | RxJS Subject (in-process) falha em deploys multi-instância. Redis Pub/Sub garante fanout para todas as instâncias com latência sub-ms. Instância separada isola falhas do Redis core. Ver ADR 001. |
-| SSE batching | `bufferTime(500ms)` no pipeline RxJS | Cenários de alta frequência (50+ eventos/s) causariam re-renders excessivos. Janela de 500ms reduz atualizações de UI para 2/s sem perda de dados. |
-| SSE at-least-once | `Last-Event-ID` + replay do DB | Redis Pub/Sub é at-most-once. `Last-Event-ID` permite ao endpoint replavar eventos perdidos do DB na reconexão, garantindo at-least-once para o frontend. |
-| Retenção read model | **V2** via EventBridge Scheduler + Lambda | V1 sem purge — multi-instância tornaria lock distribuído necessário, o que é complexidade desnecessária para V1. V2 delega ao SRE via Terraform |
-| Performance on-the-fly V1 | `GET /providers/:id/performance` faz query direta | Volume baixo em V1 — aceitável. V2 adiciona job de pré-computação periódica |
+| Scaffold | Clean (discard Palmtree) | Boilerplate modules do not apply to the Hub |
+| Dual DataSource | Primary (backoffice-db) + Named (core-db) | Clear separation of responsibilities |
+| Kafka client | @nestjs/microservices + KafkaJS | Native NestJS integration, less boilerplate |
+| Docker Compose | Full stack (2xPG + Redis + Redpanda + LocalStack + MailHog) | Enables local testing of Kafka, Secrets Manager, and 2FA |
+| Tests | Unit (mock) + Integration (SQLite) + E2E | 90% coverage on business rules |
+| Observability | Winston + dd-trace-js (no Pino/Prometheus) | DataDog as the ecosystem's single stack |
+| CI/CD | Bitbucket Pipelines + Husky | Aligned with multi-repo ecosystem |
+| Admin seed | Default migration | Guaranteed first access without manual script |
+| Architecture | Hexagonal Light + SOLID interfaces | Full decoupling with testability |
+| Organization | `organizations` table in V1 | Real grouping need; additive with no core impact |
+| 2FA | OTP via email (AWS SES), mandatory ADMIN/COMPLIANCE | OWASP security without friction for operational roles |
+| JWT refresh | 2 days (not 7) | Balance between security and UX; aligned with ecosystem |
+| Secrets Manager | infrastructure/secrets/ with LocalStack in dev | BaaS provider credentials never in database, cache, or logs |
+| Tenants CRUD | POST/PUT/DELETE with Bearer Token generation | Full CRUD in V1 — onboarding new tenants by operator |
+| Dev Seed | Fixed UUIDs + `seed:all` (DB + Redis + Secrets) | Other teams (hub-gateway, cashin-service, etc.) start with ready data without manual configuration |
+| Dev UUIDs | Fixed and versioned in migration seed | Reproducibility — other services reference tenant_id by UUID without lookup |
+| SSE vs. WebSocket | SSE (`text/event-stream`) | Unidirectional (server → client) — sufficient for transaction notifications. No full-duplex overhead. Native browser reconnection via `EventSource` |
+| SSE multi-instance fanout | Redis Pub/Sub via isolated Valkey (`REDIS_PUBSUB_URL`) | RxJS Subject (in-process) fails on multi-instance deploys. Redis Pub/Sub ensures fanout to all instances with sub-ms latency. Separate instance isolates core Redis failures. See ADR 001. |
+| SSE batching | `bufferTime(500ms)` in RxJS pipeline | High-frequency scenarios (50+ events/s) would cause excessive re-renders. 500ms window reduces UI updates to 2/s without data loss. |
+| SSE at-least-once | `Last-Event-ID` + DB replay | Redis Pub/Sub is at-most-once. `Last-Event-ID` allows the endpoint to replay missed events from DB on reconnection, ensuring at-least-once for the frontend. |
+| Read model retention | **V2** via EventBridge Scheduler + Lambda | V1 without purge — multi-instance would require distributed lock, which is unnecessary complexity for V1. V2 delegates to SRE via Terraform |
+| On-the-fly performance V1 | `GET /providers/:id/performance` does direct query | Low volume in V1 — acceptable. V2 adds periodic pre-computation job |
 
-### 18.2 PRD do hub — alterações sugeridas
+### 18.2 Hub PRD — suggested changes
 
-Nenhuma pendência identificada: o PRD do hub (`docs/product/PRD.md`) já cobre as definições de Organization, Partner e Tenant usadas aqui.
+No pending items identified: the hub PRD (`docs/product/PRD.md`) already covers the Organization, Partner, and Tenant definitions used here.

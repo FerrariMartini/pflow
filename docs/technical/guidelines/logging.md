@@ -1,8 +1,8 @@
 # Guideline — Logging
 
-## Formato
+## Format
 
-Todo log é um objeto JSON de uma linha (nunca `console.log`/`fmt.Println` de string livre em código de produção), com campos mínimos obrigatórios:
+Every log is a single-line JSON object (never free-form `console.log`/`fmt.Println` string in production code), with mandatory minimum fields:
 
 ```json
 {
@@ -14,25 +14,25 @@ Todo log é um objeto JSON de uma linha (nunca `console.log`/`fmt.Println` de st
 }
 ```
 
-## Níveis
+## Levels
 
-| Nível | Quando usar |
+| Level | When to use |
 |---|---|
-| `error` | Falha que impede a operação de completar; sempre acionável (gera alerta se em produção). |
-| `warn` | Situação anômala mas recuperável (ex: retry de webhook antes de esgotar tentativas). |
-| `info` | Evento de negócio relevante (transação criada, conciliação registrada) — não é "log de debug", é o rastro operacional. |
-| `debug` | Detalhe técnico útil só em investigação ativa; desligado por padrão em produção. |
+| `error` | Failure that prevents the operation from completing; always actionable (generates alert in production). |
+| `warn` | Anomalous but recoverable situation (e.g., webhook retry before exhausting attempts). |
+| `info` | Relevant business event (transaction created, reconciliation recorded) — not "debug log", it is the operational trail. |
+| `debug` | Technical detail useful only in active investigation; disabled by default in production. |
 
-## O que nunca logar
+## What never to log
 
-- Dado sensível de titular (documento, dados bancários completos) — ver `docs/technical/architecture/security.md`.
-- Corpo bruto de requisição/resposta contendo segredo (assinatura HMAC, token de autenticação).
-- Erro técnico com stack trace em nível `info` — stack trace só em `error`, e só em log interno (nunca na resposta HTTP).
+- Holder sensitive data (document, full banking details) — see `docs/technical/architecture/security.md`.
+- Raw request/response body containing secret (HMAC signature, authentication token).
+- Technical error with stack trace at `info` level — stack trace only at `error`, and only in internal log (never in HTTP response).
 
-## correlationId é obrigatório
+## correlationId is mandatory
 
-Qualquer log dentro do ciclo de vida de uma transação carrega `correlationId` — sem isso, uma investigação de incidente vira grep manual em vários serviços sem forma de juntar as pontas (ver `docs/technical/architecture/observability.md`). Log sem `correlationId` em um contexto que já tem um disponível é considerado defeito, não estilo.
+Any log within a transaction lifecycle carries `correlationId` — without it, an incident investigation becomes manual grep across multiple services with no way to connect the dots (see `docs/technical/architecture/observability.md`). A log without `correlationId` in a context that already has one available is considered a defect, not style.
 
-## Amostragem
+## Sampling
 
-Logs em nível `info` de alto volume (ex: heartbeat de consumidor saudável) usam amostragem (ex: 1 a cada N) para não afogar o índice de busca — mas qualquer log de mudança de estado de transação nunca é amostrado, é sempre 100%.
+High-volume `info` logs (e.g., healthy consumer heartbeat) use sampling (e.g., 1 in every N) to avoid drowning the search index — but any transaction state change log is never sampled, it is always 100%.

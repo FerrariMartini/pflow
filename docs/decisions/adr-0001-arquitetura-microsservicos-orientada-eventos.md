@@ -1,23 +1,23 @@
-# ADR-0001: Microsserviços orientados a eventos, com padrão outbox
+# ADR-0001: Event-driven microservices with outbox pattern
 
-**Status**: Aceito
+**Status**: Accepted
 
-## Contexto
+## Context
 
-O hub precisa integrar múltiplos serviços internos (cash-in, cash-out, webhook, auditoria, backoffice) que evoluem em ritmos diferentes e têm requisitos de disponibilidade distintos (ex: falha no serviço de auditoria não pode derrubar o cash-in). Também precisamos garantir que nenhuma transação "desapareça" entre a confirmação de um pagamento e a notificação dos sistemas interessados.
+The hub needs to integrate multiple internal services (cash-in, cash-out, webhook, audit, backoffice) that evolve at different paces and have distinct availability requirements (e.g., audit service failure must not take down cash-in). We also need to ensure that no transaction "disappears" between payment confirmation and notification of interested systems.
 
-## Alternativas consideradas
+## Alternatives considered
 
-1. **Monólito modular**: mais simples de operar no início, mas acopla o ciclo de deploy de todos os domínios e não isola falhas.
-2. **Microsserviços com chamadas síncronas (REST/gRPC) entre si**: mais simples de raciocinar, mas cria acoplamento temporal — se `webhook-service` estiver fora do ar, `cash-in` não poderia depender dele para confirmar uma transação.
-3. **Microsserviços orientados a eventos (Kafka) com padrão outbox**: desacopla os serviços no tempo; cada serviço reage a eventos de domínio sem depender da disponibilidade imediata dos consumidores.
+1. **Modular monolith**: simpler to operate initially, but couples the deploy cycle of all domains and does not isolate failures.
+2. **Microservices with synchronous calls (REST/gRPC) between them**: easier to reason about, but creates temporal coupling — if `webhook-service` is down, `cash-in` could not depend on it to confirm a transaction.
+3. **Event-driven microservices (Kafka) with outbox pattern**: decouples services in time; each service reacts to domain events without depending on consumers' immediate availability.
 
-## Decisão
+## Decision
 
-Adotar a opção 3. Cada serviço de domínio publica eventos através do padrão outbox (escreve o evento pendente na mesma transação de banco que a mudança de estado; um relay dedicado — `outbox-relay` — garante a publicação em Kafka).
+Adopt option 3. Each domain service publishes events through the outbox pattern (writes the pending event in the same database transaction as the state change; a dedicated relay — `outbox-relay` — ensures publication to Kafka).
 
-## Consequências
+## Consequences
 
-- Prós: falhas em serviços consumidores (webhook, auditoria) não bloqueiam o fluxo principal de pagamento; cada serviço escala e faz deploy independentemente.
-- Contras: consistência é eventual, não imediata — a UI de backoffice pode levar alguns segundos para refletir o estado mais recente. Aceitável dado que não há requisito de consistência forte para consulta operacional.
-- Exige investimento em observabilidade (correlation_id de ponta a ponta) para não perder rastreabilidade ao trocar chamada síncrona por eventos.
+- Pros: failures in consumer services (webhook, audit) do not block the main payment flow; each service scales and deploys independently.
+- Cons: consistency is eventual, not immediate — the backoffice UI may take a few seconds to reflect the latest state. Acceptable given there is no strong consistency requirement for operational lookup.
+- Requires investment in observability (end-to-end `correlation_id`) to avoid losing traceability when replacing synchronous calls with events.

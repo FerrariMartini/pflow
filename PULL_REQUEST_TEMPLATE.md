@@ -1,23 +1,23 @@
 ## Milestone
 
-- ID: `P<fase>M<milestone>` — ex: `P02M01` (ver `.wiz/<slug>/phases/phase<fase>.md`)
-- Contexto consultado: <link para a(s) guideline(s) em `docs/technical/guidelines/` que regem esta implementação — apontadas por `.wiz/context/authoritative-sources.md`>
+- ID: `P<phase>M<milestone>` — e.g. `P02M01` (see `.wiz/<slug>/phases/phase<phase>.md`)
+- Context consulted: <link to the guideline(s) in `docs/technical/guidelines/` that govern this implementation — pointed to by `.wiz/context/authoritative-sources.md`>
 
-## O que mudou e por quê
+## What changed and why
 
-<!-- Não descreva "o quê" apenas — o diff já mostra isso. Descreva o "porquê", especialmente se algo se desviou da guideline consultada (ver nota de review, se houver). -->
+<!-- Do not describe "what" only — the diff already shows that. Describe "why", especially if something deviated from the consulted guideline (see review note, if any). -->
 
 ## Checklist
 
-- [ ] Lint limpo (`npm run lint` / `golangci-lint run`) — ver `docs/technical/ci-cd.md`
-- [ ] Build sem erro
-- [ ] Testes cobrindo o critério de aceite da milestone, incluindo ao menos um caso de borda/rejeição
-- [ ] Nenhum segredo, credencial ou dado real introduzido
-- [ ] Contrato de API/evento atualizado em `docs/contract/contract.md`, se este PR muda contrato
-- [ ] ADR criado em `docs/decisions/`, se este PR envolve decisão arquitetural relevante
-- [ ] Revisão do especialista de linguagem feita antes do commit (obrigatória em `/wiz-next`)
-- [ ] Se este PR fechou uma auditoria formal, nota de review escrita em `.wiz/<slug>/reviews/milestone-<id>-review.md`
+- [ ] Lint clean (`npm run lint` / `golangci-lint run`) — see `docs/technical/ci-cd.md`
+- [ ] Build passes
+- [ ] Tests cover the milestone acceptance criteria, including at least one edge/rejection case
+- [ ] No secrets, credentials, or real data introduced
+- [ ] API/event contract updated in `docs/contract/contract.md`, if this PR changes contract
+- [ ] ADR created in `docs/decisions/`, if this PR involves a relevant architecture decision
+- [ ] Language specialist review done before commit (mandatory in `/wiz-next`)
+- [ ] If this PR closed a formal audit, review note written in `.wiz/<slug>/reviews/milestone-<id>-review.md`
 
-## Revisão
+## Review
 
-<!-- Preenchido pelo revisor: o que foi checado contra as guidelines aplicáveis, qualquer achado (mesmo que não bloqueante), veredito. -->
+<!-- Filled by reviewer: what was checked against applicable guidelines, any findings (even non-blocking), verdict. -->

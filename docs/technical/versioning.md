@@ -1,39 +1,39 @@
-# Versionamento e Changelog
+# Versioning and Changelog
 
-## Princípio: versão por serviço, não por monorepo
+## Principle: version per service, not per monorepo
 
-Cada serviço tem sua própria versão (`package.json`/`go.mod`) e seu próprio `CHANGELOG.md` — não existe um número de versão único para o `payflow-hub` inteiro. Isso reflete a realidade de microsserviços: cada um é deployado, versionado e tem cadência de release independente (ver `docs/technical/ci-cd.md`, seção "Deploy progressivo"). Um changelog único pro monorepo misturaria mudanças de serviços que nem são deployados juntos.
+Each service has its own version (`package.json`/`go.mod`) and its own `CHANGELOG.md` — there is no single version number for the entire `payflow-hub`. This reflects the microservices reality: each one is deployed, versioned, and released on an independent cadence (see `docs/technical/ci-cd.md`, "Progressive deploy" section). A single monorepo changelog would mix changes from services that are not even deployed together.
 
 ## SemVer (MAJOR.MINOR.PATCH)
 
-| Tipo de commit (Conventional Commits) | Bump | Seção no changelog |
+| Commit type (Conventional Commits) | Bump | Changelog section |
 |---|---|---|
 | `fix:` | PATCH | Bug Fixes |
 | `feat:` | MINOR | Features |
-| `feat!:` ou rodapé `BREAKING CHANGE:` | MAJOR | Breaking Changes |
-| `docs:`, `chore:`, `test:`, `refactor:`, `style:` | nenhum | (aparecem no changelog só como "Other", não forçam release) |
+| `feat!:` or footer `BREAKING CHANGE:` | MAJOR | Breaking Changes |
+| `docs:`, `chore:`, `test:`, `refactor:`, `style:` | none | (appear in changelog only as "Other", do not force release) |
 
-O bump é derivado automaticamente do histórico de commits — não é um número escolhido manualmente a cada release. Isso só funciona porque Conventional Commits já é gate obrigatório neste projeto (`docs/technical/guidelines/coding-standards.md`, seção Geral) e enforçado no commit via `commitlint` + `husky` (`services/payflow-backoffice-api`).
+The bump is derived automatically from commit history — it is not a number chosen manually on each release. This only works because Conventional Commits is already a mandatory gate in this project (`docs/technical/guidelines/coding-standards.md`, General section) and enforced on commit via `commitlint` + `husky` (`services/payflow-backoffice-api`).
 
-## Ferramenta
+## Tooling
 
-`payflow-backoffice-api` usa [`semantic-release`](https://semantic-release.gitbook.io/): a cada merge na branch principal, analisa os commits desde a última tag, calcula a próxima versão, gera o `CHANGELOG.md` e cria a tag — sem passo manual. Os serviços em Go seguem o mesmo princípio com ferramenta equivalente do ecossistema (`svu` + `git-chglog`), configurada junto com a primeira release de cada um.
+`payflow-backoffice-api` uses [`semantic-release`](https://semantic-release.gitbook.io/): on each merge to the main branch, it analyzes commits since the last tag, calculates the next version, generates `CHANGELOG.md`, and creates the tag — with no manual step. Go services follow the same principle with an equivalent ecosystem tool (`svu` + `git-chglog`), configured along with each service's first release.
 
-## Versão de contrato ≠ versão de pacote, mas está relacionada
+## Contract version ≠ package version, but they are related
 
-`docs/contract/contract.md` já define que mudança breaking de contrato REST exige novo prefixo de path (`/v2/...`) e mudança breaking de evento exige novo tópico/versão. A relação com SemVer do pacote:
+`docs/contract/contract.md` already defines that a breaking REST contract change requires a new path prefix (`/v2/...`) and a breaking event change requires a new topic/version. The relationship with package SemVer:
 
-- **Todo bump de versão de contrato é MAJOR de pacote** — se `/v1` vira `/v2`, o serviço necessariamente teve um `BREAKING CHANGE` no seu changelog.
-- **Nem todo MAJOR de pacote muda o contrato público** — um refactor interno grande (ex: trocar o repositório in-memory por Postgres) pode justificar MAJOR sem que `/v1` deixe de existir para o integrador. Um refactor desse porte, quando implementado como milestone, tem sua nota de review em `.wiz/<slug>/reviews/`.
+- **Every contract version bump is a package MAJOR** — if `/v1` becomes `/v2`, the service necessarily had a `BREAKING CHANGE` in its changelog.
+- **Not every package MAJOR changes the public contract** — a large internal refactor (e.g., replacing in-memory repository with Postgres) may justify MAJOR without `/v1` ceasing to exist for the integrator. A refactor of that scale, when implemented as a milestone, has its review note in `.wiz/<slug>/reviews/`.
 
-## Política de deprecação de contrato
+## Contract deprecation policy
 
-Quando uma versão de contrato é aposentada (ex: `/v1` em favor de `/v2`):
+When a contract version is retired (e.g., `/v1` in favor of `/v2`):
 
-1. `/v1` continua respondendo por no mínimo 6 meses após `/v2` ser publicado, prazo comunicado no changelog do serviço no momento em que `/v2` sai.
-2. Resposta de `/v1` passa a incluir header `Sunset: <data>` (RFC 8594) a partir do dia em que `/v2` é publicado — integrador não é pego de surpresa.
-3. Remoção efetiva de `/v1` é, ela mesma, um `BREAKING CHANGE` registrado no changelog, mesmo não sendo uma mudança de comportamento (é uma remoção de superfície).
+1. `/v1` continues responding for at least 6 months after `/v2` is published, deadline communicated in the service changelog when `/v2` ships.
+2. `/v1` responses include header `Sunset: <data>` (RFC 8594) from the day `/v2` is published — the integrator is not caught by surprise.
+3. Effective removal of `/v1` is itself a `BREAKING CHANGE` recorded in the changelog, even though it is not a behavior change (it is a surface removal).
 
-## Estado atual
+## Current state
 
-`services/payflow-backoffice-api/CHANGELOG.md` está em 0.1.0, sem seção de breaking changes — nenhum contrato publicado foi alterado desde a versão inicial. A configuração do `semantic-release` está em `.releaserc.json`, com `npmPublish: false` (o pacote é privado; o release produz tag e changelog, não publicação em registry).
+`services/payflow-backoffice-api/CHANGELOG.md` is at 0.1.0, with no breaking changes section — no published contract has changed since the initial version. The `semantic-release` configuration is in `.releaserc.json`, with `npmPublish: false` (the package is private; release produces tag and changelog, not registry publication).

@@ -1,65 +1,65 @@
 # PRD — PayFlow Hub
 
-## 1. Contexto e problema
+## 1. Context and problem
 
-Empresas que processam pagamentos instantâneos (ex: PIX no Brasil) frequentemente dependem de um único provedor/banco para liquidar transações. Isso gera três problemas recorrentes:
+Companies that process instant payments (e.g., PIX in Brazil) often rely on a single provider/bank to settle transactions. This causes three recurring problems:
 
-1. **Ponto único de falha**: indisponibilidade do provedor paralisa o fluxo de pagamentos do negócio.
-2. **Falta de padronização**: cada integração bancária expõe um contrato diferente, forçando os sistemas internos a conhecer detalhes de cada banco.
-3. **Baixa observabilidade operacional**: sem um ponto central de conciliação, é difícil para o time de operações (backoffice) saber o status real de uma transação em caso de divergência.
+1. **Single point of failure**: provider unavailability halts the business payment flow.
+2. **Lack of standardization**: each banking integration exposes a different contract, forcing internal systems to know the details of each bank.
+3. **Low operational observability**: without a central reconciliation point, it is hard for the operations team (backoffice) to know the real status of a transaction when discrepancies arise.
 
-## 2. Objetivo
+## 2. Objective
 
-Construir um **hub de pagamentos** que abstraia múltiplos provedores de liquidação atrás de um contrato único e interno, garanta consistência via processamento assíncrono orientado a eventos, e ofereça a times de operação uma visão unificada e auditável de todas as transações.
+Build a **payment hub** that abstracts multiple settlement providers behind a single internal contract, ensures consistency via asynchronous event-driven processing, and gives operations teams a unified, auditable view of all transactions.
 
 ## 3. Personas
 
-- **Integrador (cliente do hub)**: sistemas internos de outros produtos da empresa que iniciam cobranças (cash-in) ou pagamentos (cash-out) através do hub. Objetivo: integrar uma vez contra um contrato estável, sem precisar conhecer particularidades de cada provedor bancário. Dor atual: cada produto que integra diretamente com um banco reimplementa retry, idempotência e tratamento de erro do zero.
-- **Operador de backoffice**: analista que consulta status de transações, investiga divergências e aciona reprocessamento manual quando necessário. Objetivo: responder "o que aconteceu com a transação X" em segundos, não em uma investigação manual entre bancos de dados. Dor atual: sem visão unificada, precisa de acesso direto (e arriscado) ao banco de produção de cada serviço.
-- **Provedor de liquidação**: banco/instituição parceira que efetivamente move o dinheiro e notifica o hub via webhook. Não é usuário direto do hub, mas define restrições de contrato (formato de callback, janela de confirmação) que o hub precisa absorver sem vazar para os integradores.
-- **SRE / plantão**: responsável por manter o hub operacional; consome os artefatos de `docs/technical/infrastructure/` e `docs/technical/architecture/observability.md`, não o código de domínio em si.
-- **QA**: valida que cada entrega atende ao critério de aceite definido na milestone (`.wiz/<slug>/phases/`, quando o serviço é planejado via o PayFlow SDLC Kit), com base nas diretrizes de `docs/technical/quality/qa-guidelines.md`.
+- **Integrator (hub client)**: internal systems from other company products that initiate collections (cash-in) or payments (cash-out) through the hub. Goal: integrate once against a stable contract without needing to know the particulars of each banking provider. Current pain: every product that integrates directly with a bank reimplements retry, idempotency, and error handling from scratch.
+- **Backoffice operator**: analyst who looks up transaction status, investigates discrepancies, and triggers manual reprocessing when needed. Goal: answer "what happened to transaction X" in seconds, not through a manual investigation across databases. Current pain: without a unified view, they need direct (and risky) access to each service's production database.
+- **Settlement provider**: partner bank/institution that actually moves money and notifies the hub via webhook. Not a direct hub user, but defines contract constraints (callback format, confirmation window) that the hub must absorb without leaking them to integrators.
+- **SRE / on-call**: responsible for keeping the hub operational; consumes artifacts from `docs/technical/infrastructure/` and `docs/technical/architecture/observability.md`, not the domain code itself.
+- **QA**: validates that each delivery meets the acceptance criteria defined in the milestone (`.wiz/<slug>/phases/`, when the service is planned via the PayFlow SDLC Kit), based on `docs/technical/quality/qa-guidelines.md`.
 
 ## 3.1 Multi-tenancy
 
-Cada integrador é tratado como um tenant lógico do hub (não há deploy dedicado por cliente). Isso implica: nenhuma query sem filtro por `integratorId`, limites (rate limit, valor) configuráveis por tenant, e nenhum dado de um integrador acessível por outro — ver `docs/technical/architecture/security.md` e `docs/technical/infrastructure/aws-architecture.md` para como isso se reflete em autenticação e infraestrutura.
+Each integrator is treated as a logical tenant of the hub (there is no dedicated deploy per client). This implies: no query without a filter by `integratorId`, limits (rate limit, amount) configurable per tenant, and no integrator's data accessible to another — see `docs/technical/architecture/security.md` and `docs/technical/infrastructure/aws-architecture.md` for how this is reflected in authentication and infrastructure.
 
-## 4. Escopo funcional (v1)
+## 4. Functional scope (v1)
 
-| Capacidade | Descrição | Serviço responsável |
+| Capability | Description | Responsible service |
 |---|---|---|
-| Cash-in | Receber ordens de cobrança, gerar cobrança no provedor, aguardar confirmação | `payflow-cashin-service` |
-| Cash-out | Receber ordens de pagamento/transferência, submeter ao provedor, tratar liquidação | `payflow-cashout-service` |
-| Roteamento de entrada | Autenticação, rate limiting e roteamento das chamadas de integradores | `payflow-gateway` |
-| Notificação outbound | Notificar sistemas integradores sobre mudanças de status via webhook, com retry e assinatura HMAC | `payflow-webhook-service` |
-| Consistência de eventos | Garantir publicação confiável de eventos de domínio (padrão outbox) | `payflow-outbox-relay` |
-| Trilha de auditoria | Registrar todo evento relevante para fins de compliance e investigação | `payflow-audit-service` |
-| Operação/backoffice | Consulta de transações, conciliação manual, reprocessamento, métricas operacionais | `payflow-backoffice-api` (+ frontend) |
+| Cash-in | Receive collection orders, generate collection at the provider, await confirmation | `payflow-cashin-service` |
+| Cash-out | Receive payment/transfer orders, submit to the provider, handle settlement | `payflow-cashout-service` |
+| Ingress routing | Authentication, rate limiting, and routing of integrator calls | `payflow-gateway` |
+| Outbound notification | Notify integrator systems about status changes via webhook, with retry and HMAC signature | `payflow-webhook-service` |
+| Event consistency | Ensure reliable publication of domain events (outbox pattern) | `payflow-outbox-relay` |
+| Audit trail | Record every relevant event for compliance and investigation | `payflow-audit-service` |
+| Operations/backoffice | Transaction lookup, manual reconciliation, reprocessing, operational metrics | `payflow-backoffice-api` (+ frontend) |
 
-## 5. Fora de escopo (v1)
+## 5. Out of scope (v1)
 
-- Suporte a múltiplos provedores simultâneos com roteamento por custo/SLA (fica para v2).
-- Split de pagamentos entre múltiplos beneficiários.
-- Interface de autoatendimento para integradores (onboarding é manual/via time comercial).
+- Support for multiple simultaneous providers with routing by cost/SLA (deferred to v2).
+- Payment split among multiple beneficiaries.
+- Self-service interface for integrators (onboarding is manual/via commercial team).
 
-## 5.1 Requisitos não funcionais (por prioridade)
+## 5.1 Non-functional requirements (by priority)
 
-| Prioridade | Categoria | Requisito |
+| Priority | Category | Requirement |
 |---|---|---|
-| P0 — Corretude | Sem duplicidade de movimentação sob nenhuma condição de retry/rede | Ver seção 7 (riscos) e `docs/technical/guidelines/error-handling.md` |
-| P1 — Testes | Regressão impossível em regra de máquina de estados sem quebrar CI | Ver `docs/technical/ci-cd.md` e `docs/technical/quality/qa-guidelines.md` |
-| P2 — Segurança | Toda borda de entrada autenticada; nenhum dado sensível em log | Ver `docs/technical/architecture/security.md`, `docs/technical/guidelines/logging.md` |
-| P3 — Qualidade | Código revisável isoladamente por commit; ADR para toda decisão relevante | Ver `docs/technical/guidelines/coding-standards.md`, `docs/decisions/` |
-| P4 — Performance | Latência e throughput dentro do SLO por serviço | Ver `docs/technical/architecture/observability.md` |
+| P0 — Correctness | No duplicate movement under any retry/network condition | See section 7 (risks) and `docs/technical/guidelines/error-handling.md` |
+| P1 — Testing | State machine regression impossible without breaking CI | See `docs/technical/ci-cd.md` and `docs/technical/quality/qa-guidelines.md` |
+| P2 — Security | Every entry point authenticated; no sensitive data in logs | See `docs/technical/architecture/security.md`, `docs/technical/guidelines/logging.md` |
+| P3 — Quality | Code reviewable in isolation per commit; ADR for every relevant decision | See `docs/technical/guidelines/coding-standards.md`, `docs/decisions/` |
+| P4 — Performance | Latency and throughput within SLO per service | See `docs/technical/architecture/observability.md` |
 
-## 6. Métricas de sucesso
+## 6. Success metrics
 
-- Latência p95 de confirmação de cash-in abaixo de 200ms.
-- 100% das transações com trilha de auditoria completa (nenhum evento perdido).
-- Zero divergência não detectada entre o status interno e o status no provedor (garantido por conciliação periódica).
+- p95 latency for cash-in confirmation below 200ms.
+- 100% of transactions with a complete audit trail (no lost events).
+- Zero undetected discrepancy between internal status and provider status (guaranteed by periodic reconciliation).
 
-## 7. Riscos conhecidos
+## 7. Known risks
 
-- **Duplicidade de processamento**: mitigado por idempotência em todos os endpoints de entrada (chave de idempotência obrigatória).
-- **Eventos fora de ordem**: mitigado por máquina de estados explícita por transação, que rejeita transições inválidas.
-- **Falha de entrega de webhook**: mitigado por fila de retry com backoff exponencial e dead-letter queue.
+- **Duplicate processing**: mitigated by idempotency on all entry endpoints (idempotency key required).
+- **Out-of-order events**: mitigated by an explicit state machine per transaction that rejects invalid transitions.
+- **Webhook delivery failure**: mitigated by a retry queue with exponential backoff and dead-letter queue.

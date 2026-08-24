@@ -1,37 +1,37 @@
-# SRE — runbook e operação
+# SRE — runbook and operations
 
-## Severidades de incidente
+## Incident severities
 
-| Severidade | Critério | Exemplo | Resposta esperada |
+| Severity | Criterion | Example | Expected response |
 |---|---|---|---|
-| SEV1 | Movimentação de valor impactada (cash-in/cash-out indisponível ou processando incorretamente) | `payflow-cashin-service` fora do ar | Acionamento imediato, war room, comunicação a stakeholders em até 15 min |
-| SEV2 | Degradação sem impacto direto em valor | Lag alto em `outbox-relay`, atraso de webhook | Acionamento em até 30 min, sem war room obrigatório |
-| SEV3 | Impacto restrito a operação/observabilidade | `payflow-audit-service` com atraso de ingestão | Tratado em horário comercial, sem acionamento fora de escala |
+| SEV1 | Value movement impacted (cash-in/cash-out unavailable or processing incorrectly) | `payflow-cashin-service` down | Immediate escalation, war room, stakeholder communication within 15 min |
+| SEV2 | Degradation without direct value impact | High lag in `outbox-relay`, webhook delay | Escalation within 30 min, no mandatory war room |
+| SEV3 | Impact limited to operations/observability | `payflow-audit-service` with ingestion delay | Handled in business hours, no off-hours escalation |
 
-## Alertas de referência e runbook associado
+## Reference alerts and associated runbook
 
-### Alerta: lag de consumidor acima do SLO (`payflow-outbox-relay`)
-- **Sintoma**: eventos demoram para chegar aos consumidores (webhook, audit, backoffice).
-- **Primeira ação**: verificar se é lag de leitura (poll não acompanha volume) ou lag de publicação (broker aceitando devagar) — dashboards separam as duas métricas.
-- **Mitigação imediata**: escalar horizontalmente o `outbox-relay` (é stateless e usa `SELECT ... FOR UPDATE SKIP LOCKED`, seguro escalar sem coordenação adicional).
-- **Escalonamento**: se lag persiste após scale-out, verificar saúde do MSK (partições sub-replicadas, ISR shrink) antes de investigar a aplicação.
+### Alert: consumer lag above SLO (`payflow-outbox-relay`)
+- **Symptom**: events take long to reach consumers (webhook, audit, backoffice).
+- **First action**: verify whether it is read lag (poll not keeping up with volume) or publication lag (broker accepting slowly) — dashboards separate the two metrics.
+- **Immediate mitigation**: scale `outbox-relay` horizontally (it is stateless and uses `SELECT ... FOR UPDATE SKIP LOCKED`, safe to scale without additional coordination).
+- **Escalation**: if lag persists after scale-out, check MSK health (under-replicated partitions, ISR shrink) before investigating the application.
 
-### Alerta: taxa de erro do `payflow-gateway` acima de 1%
-- **Primeira ação**: verificar se é concentrado em um integrador (rate limit/HMAC de um cliente específico) ou geral (rollout ruim, dependência downstream fora do ar).
-- **Mitigação imediata**: se geral e correlacionado com deploy recente, rollback segue o critério automático de `docs/technical/ci-cd.md` (mas pode ser antecipado manualmente).
+### Alert: `payflow-gateway` error rate above 1%
+- **First action**: verify whether it is concentrated on one integrator (rate limit/HMAC of a specific client) or general (bad rollout, downstream dependency down).
+- **Immediate mitigation**: if general and correlated with recent deploy, rollback follows the automatic criterion from `docs/technical/ci-cd.md` (but can be triggered manually earlier).
 
-### Alerta: transações não conciliadas acima do limiar (`payflow-backoffice-api`)
-- **Sintoma**: métrica de negócio (ver `docs/technical/architecture/observability.md`) subindo — indica divergência crescente entre hub e provedor, não é só um problema técnico.
-- **Primeira ação**: time de operação (não SRE) investiga via `GET /v1/transactions?status=...`; SRE só é acionado se a causa raiz for técnica (ex: consumidor de eventos do read model parado).
+### Alert: unreconciled transactions above threshold (`payflow-backoffice-api`)
+- **Symptom**: business metric (see `docs/technical/architecture/observability.md`) rising — indicates growing discrepancy between hub and provider, not just a technical problem.
+- **First action**: operations team (not SRE) investigates via `GET /v1/transactions?status=...`; SRE is only escalated if root cause is technical (e.g., read model event consumer stopped).
 
-## Prontidão operacional (definition of "pronto para produção")
+## Operational readiness (definition of "production ready")
 
-Um serviço novo só vai para produção quando:
-1. Dashboards RED (ou de consumidor, conforme o tipo) publicados e revisados por SRE.
-2. Ao menos um alerta crítico configurado e testado (disparo simulado, não só configurado "no papel").
-3. Runbook mínimo documentado nesta página (ou em anexo) para o alerta crítico acima.
-4. Rollback automático configurado conforme `docs/technical/ci-cd.md`.
+A new service only goes to production when:
+1. RED dashboards (or consumer dashboards, according to type) published and reviewed by SRE.
+2. At least one critical alert configured and tested (simulated trigger, not just configured "on paper").
+3. Minimum runbook documented on this page (or in appendix) for the critical alert above.
+4. Automatic rollback configured per `docs/technical/ci-cd.md`.
 
 ## On-call
 
-Rotação semanal, escopo por domínio (não um único on-call genérico para os 7 serviços) — quem está de plantão em `cashin`/`cashout` não é necessariamente quem responde por `audit-service`, dado o perfil de severidade muito diferente entre esses grupos.
+Weekly rotation, scope by domain (not a single generic on-call for all 7 services) — whoever is on call for `cashin`/`cashout` is not necessarily whoever responds for `audit-service`, given the very different severity profile between those groups.

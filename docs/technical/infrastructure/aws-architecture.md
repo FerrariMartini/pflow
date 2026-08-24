@@ -1,56 +1,56 @@
-# Infraestrutura — AWS
+# Infrastructure — AWS
 
-## Visão geral
+## Overview
 
 ```
                          Route53 → ACM (TLS) → ALB
                                      │
                             ┌────────┴────────┐
-                            │  ECS Fargate     │  payflow-gateway (público)
-                            │  (serviço público)│
+                            │  ECS Fargate     │  payflow-gateway (public)
+                            │  (public service)│
                             └────────┬─────────┘
-                                     │ rede privada
+                                     │ private network
         ┌────────────────────────────┼────────────────────────────┐
         ▼                            ▼                             ▼
 ┌───────────────┐           ┌───────────────┐             ┌───────────────┐
 │ ECS Fargate    │           │ ECS Fargate    │             │ ECS Fargate    │
 │ cashin/cashout │           │ webhook/audit/ │             │ backoffice-api │
-│ (privado)      │           │ outbox-relay   │             │ (privado, atrás│
-└───────┬────────┘           └───────┬────────┘             │  do IdP corp.) │
+│ (private)      │           │ outbox-relay   │             │ (private,      │
+└───────┬────────┘           └───────┬────────┘             │  corp IdP)     │
         │                            │                       └───────┬───────┘
         ▼                            ▼                               ▼
 ┌────────────────┐          ┌────────────────┐              ┌────────────────┐
 │ RDS PostgreSQL  │          │ Amazon MSK      │              │ RDS PostgreSQL  │
-│ (multi-AZ,      │◄────────►│ (Kafka gerenciado│             │ (read model)    │
-│  por serviço)   │          │  , 3 AZs)        │              └────────────────┘
+│ (multi-AZ,      │◄────────►│ (managed Kafka, │             │ (read model)    │
+│  per service)   │          │  3 AZs)         │              └────────────────┘
 └────────────────┘          └────────────────┘
 ```
 
-## Componentes
+## Components
 
-| Componente | Serviço AWS | Notas |
+| Component | AWS service | Notes |
 |---|---|---|
-| Compute | ECS Fargate | Sem gestão de instância EC2; task sizing por serviço conforme perfil de carga (`cashin`/`cashout` com mais CPU, `audit` mais I/O). |
-| Broker de eventos | Amazon MSK | 3 AZs, réplicas suficientes para tolerar perda de 1 AZ sem perda de dado (`min.insync.replicas` > 1). |
-| Banco relacional | RDS PostgreSQL (multi-AZ) | Um banco lógico por serviço (sem banco compartilhado entre domínios) — reforça o isolamento do ADR-0001/ADR-0002. |
-| Secrets | AWS Secrets Manager | Chaves HMAC de integradores e credenciais de banco; rotação automática onde suportado. |
-| Rede | VPC com subnets públicas (só ALB) e privadas (todo o resto) | Nenhum serviço de domínio tem IP público; `payflow-gateway` é a única borda exposta. |
-| Registry de imagem | Amazon ECR | Imagem versionada por SHA (ver `docs/technical/ci-cd.md`). |
-| Observabilidade | CloudWatch Logs (ingestão) + backend de métricas/tracing compatível com OpenTelemetry | Ver `docs/technical/architecture/observability.md` para os sinais coletados. |
-| IAM | Role por serviço (task role do ECS), sem credencial estática | Cada serviço só tem permissão para os recursos que efetivamente usa (princípio de menor privilégio) — `webhook-service`, por exemplo, não tem permissão de escrita no banco de `cashin-service`. |
+| Compute | ECS Fargate | No EC2 instance management; task sizing per service according to load profile (`cashin`/`cashout` with more CPU, `audit` more I/O). |
+| Event broker | Amazon MSK | 3 AZs, enough replicas to tolerate loss of 1 AZ without data loss (`min.insync.replicas` > 1). |
+| Relational database | RDS PostgreSQL (multi-AZ) | One logical database per service (no shared database across domains) — reinforces ADR-0001/ADR-0002 isolation. |
+| Secrets | AWS Secrets Manager | Integrator HMAC keys and database credentials; automatic rotation where supported. |
+| Network | VPC with public subnets (ALB only) and private subnets (everything else) | No domain service has a public IP; `payflow-gateway` is the only exposed boundary. |
+| Image registry | Amazon ECR | Image versioned by SHA (see `docs/technical/ci-cd.md`). |
+| Observability | CloudWatch Logs (ingestion) + metrics/tracing backend compatible with OpenTelemetry | See `docs/technical/architecture/observability.md` for collected signals. |
+| IAM | Role per service (ECS task role), no static credential | Each service has permission only for resources it actually uses (least privilege) — `webhook-service`, for example, has no write permission on `cashin-service` database. |
 
-## Ambientes
+## Environments
 
-| Ambiente | Propósito | Dado |
+| Environment | Purpose | Data |
 |---|---|---|
-| `dev` | Integração contínua, deploy automático a cada merge | Sintético/anonimizado |
-| `staging` | Validação pré-produção, paridade de infraestrutura com prod | Sintético/anonimizado |
-| `prod` | Produção | Real, com todos os controles de `docs/technical/architecture/security.md` ativos |
+| `dev` | Continuous integration, automatic deploy on every merge | Synthetic/anonymized |
+| `staging` | Pre-production validation, infrastructure parity with prod | Synthetic/anonymized |
+| `prod` | Production | Real, with all controls from `docs/technical/architecture/security.md` active |
 
-## Isolamento multi-tenant (nível de infraestrutura)
+## Multi-tenant isolation (infrastructure level)
 
-Cada integrador é um tenant lógico, não um recurso de infraestrutura isolado (sem VPC por cliente) — o isolamento acontece na camada de aplicação (autenticação por integrador + filtro por `integratorId` em toda query). Essa decisão prioriza custo operacional sobre isolamento físico total; caso um integrador exija isolamento físico dedicado (ex: requisito contratual/regulatório), isso é tratado como exceção arquitetural documentada, não como padrão.
+Each integrator is a logical tenant, not an isolated infrastructure resource (no VPC per client) — isolation happens at the application layer (authentication per integrator + filter by `integratorId` on every query). This decision prioritizes operational cost over total physical isolation; if an integrator requires dedicated physical isolation (e.g., contractual/regulatory requirement), that is treated as a documented architectural exception, not the default.
 
-## Provisionamento
+## Provisioning
 
-Este documento define o desenho-alvo de infraestrutura, que é o contexto de arquitetura consumido por SRE e por quem opera o sistema. O provisionamento por código (Terraform ou CDK) deriva deste desenho e é rastreado como trabalho próprio, planejado via o PayFlow SDLC Kit (`/wiz-prd`) quando priorizado — a decisão arquitetural precede a automação, não o contrário.
+This document defines the target infrastructure design, which is the architecture context consumed by SRE and those who operate the system. Provisioning as code (Terraform or CDK) derives from this design and is tracked as its own work, planned via the PayFlow SDLC Kit (`/wiz-prd`) when prioritized — the architectural decision precedes automation, not the other way around.

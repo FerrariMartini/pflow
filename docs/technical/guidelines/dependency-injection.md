@@ -1,13 +1,13 @@
-# Guideline — Injeção de dependência
+# Guideline — Dependency injection
 
 ## Backoffice (Node.js/NestJS — `payflow-backoffice-api`)
 
-- Usar o container de DI nativo do NestJS (`@Injectable`, construtor injection) — nunca instanciar dependência manualmente dentro de um service (`new SomeService()`), pois quebra a substituição por mock em teste e o ciclo de vida gerenciado pelo framework.
-- Dependências de infraestrutura (repositório, cliente HTTP, cliente de fila) são injetadas por **interface/token**, não pela implementação concreta — o módulo decide qual implementação real é usada; o service depende apenas do contrato. Isso é o que permite `TransactionsService` ser testado com um repositório em memória sem qualquer mock framework (ver `transactions.service.spec.ts`).
-- Escopo padrão é singleton (`DEFAULT`); usar escopo `REQUEST` apenas quando houver estado por requisição que realmente não pode ser singleton (ex: contexto de usuário autenticado) — escopo `REQUEST` tem custo de performance (nova instância por requisição) e deve ser exceção, não padrão.
+- Use NestJS native DI container (`@Injectable`, constructor injection) — never instantiate dependencies manually inside a service (`new SomeService()`), because that breaks mock substitution in tests and framework-managed lifecycle.
+- Infrastructure dependencies (repository, HTTP client, queue client) are injected by **interface/token**, not by concrete implementation — the module decides which real implementation is used; the service depends only on the contract. That is what allows `TransactionsService` to be tested with an in-memory repository without any mock framework (see `transactions.service.spec.ts`).
+- Default scope is singleton (`DEFAULT`); use `REQUEST` scope only when there is per-request state that truly cannot be singleton (e.g., authenticated user context) — `REQUEST` scope has performance cost (new instance per request) and should be the exception, not the default.
 
-## CORE (serviços de domínio em Go)
+## CORE (domain services in Go)
 
-- Sem framework de DI mágico (sem reflection-based container) — injeção manual via construtor (`func NewService(repo Repository, publisher EventPublisher) *Service`), seguindo o padrão de arquitetura hexagonal já adotado (`internal/domain`, `internal/usecase`, `internal/adapter`).
-- `main.go` (ou `cmd/`) é o único lugar que conhece as implementações concretas (adapters); tudo abaixo disso depende de interface definida no próprio pacote de domínio/usecase que a consome (Dependency Inversion — quem define a interface é quem consome, não quem implementa).
-- Isso mantém `internal/domain` sem nenhum import de infraestrutura (nem driver de banco, nem SDK de Kafka), o que é validado por lint de arquitetura no CI (ver `docs/technical/ci-cd.md`).
+- No magic DI framework (no reflection-based container) — manual injection via constructor (`func NewService(repo Repository, publisher EventPublisher) *Service`), following the hexagonal architecture pattern already adopted (`internal/domain`, `internal/usecase`, `internal/adapter`).
+- `main.go` (or `cmd/`) is the only place that knows concrete implementations (adapters); everything below depends on an interface defined in the domain/usecase package that consumes it (Dependency Inversion — whoever defines the interface is whoever consumes, not whoever implements).
+- This keeps `internal/domain` with no infrastructure imports (neither database driver nor Kafka SDK), which is validated by architecture lint in CI (see `docs/technical/ci-cd.md`).

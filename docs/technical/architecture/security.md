@@ -1,36 +1,36 @@
-# Arquitetura — Segurança
+# Architecture — Security
 
-## Modelo de ameaças (resumo)
+## Threat model (summary)
 
-O hub processa movimentação financeira, então o modelo de ameaça prioriza: (1) forjar/alterar uma transação, (2) reproduzir uma transação legítima (replay), (3) escalar privilégio para operações administrativas, (4) vazar dados de transação em trânsito ou em log.
+The hub processes financial movement, so the threat model prioritizes: (1) forging/altering a transaction, (2) replaying a legitimate transaction, (3) privilege escalation for administrative operations, (4) leaking transaction data in transit or in logs.
 
-## Autenticação e autorização
+## Authentication and authorization
 
-- **Integrador → Gateway**: assinatura HMAC-SHA256 sobre o corpo bruto da requisição (`X-Signature`), com segredo por integrador, rotacionável sem downtime (dois segredos válidos simultaneamente durante a rotação).
-- **Serviço → Serviço**: mTLS na malha interna (todos os serviços atrás do `payflow-gateway` confiam apenas em certificados emitidos pela CA interna do cluster).
-- **Backoffice (operador humano)**: OIDC contra o provedor de identidade da empresa; o token carrega `role` (ex: `operator`, `auditor`) usado para autorização por endpoint no `payflow-backoffice-api`.
-- **Sem princípio de confiança implícita entre serviços**: mesmo dentro da rede interna, cada serviço valida o `correlationId`/claims recebidos, não assume que "veio da rede interna" é suficiente.
+- **Integrator → Gateway**: HMAC-SHA256 signature over the raw request body (`X-Signature`), with secret per integrator, rotatable without downtime (two valid secrets simultaneously during rotation).
+- **Service → Service**: mTLS on the internal mesh (all services behind `payflow-gateway` trust only certificates issued by the cluster's internal CA).
+- **Backoffice (human operator)**: OIDC against the company's identity provider; the token carries `role` (e.g. `operator`, `auditor`) used for per-endpoint authorization in `payflow-backoffice-api`.
+- **No implicit trust principle between services**: even inside the internal network, each service validates received `correlationId`/claims, and does not assume "came from internal network" is sufficient.
 
-## Idempotência como controle de segurança (não só de confiabilidade)
+## Idempotency as a security control (not only reliability)
 
-`Idempotency-Key` obrigatório em toda operação de escrita não é só proteção contra falha de rede — é também mitigação de replay: uma tentativa de reenviar uma requisição capturada não gera uma segunda cobrança/pagamento.
+Mandatory `Idempotency-Key` on every write operation is not only protection against network failure — it is also replay mitigation: an attempt to resend a captured request does not generate a second collection/payment.
 
-## Proteção de dados
+## Data protection
 
-- Nenhum dado sensível (documento do titular, dados bancários completos) é logado — logs carregam apenas identificadores internos (`transactionId`, `correlationId`, `integratorId` mascarado).
-- Dados em repouso: criptografia at-rest no banco de cada serviço; dados em trânsito: TLS 1.2+ em todas as bordas, mTLS internamente.
-- Segredos (chaves HMAC, credenciais de banco) nunca em variável de ambiente em texto plano em produção — vêm de um secrets manager, injetados em runtime.
+- No sensitive data (holder document, full banking details) is logged — logs carry only internal identifiers (`transactionId`, `correlationId`, masked `integratorId`).
+- Data at rest: at-rest encryption in each service's database; data in transit: TLS 1.2+ on all boundaries, mTLS internally.
+- Secrets (HMAC keys, database credentials) never in plain-text environment variables in production — they come from a secrets manager, injected at runtime.
 
-## Auditoria como controle de segurança
+## Audit as a security control
 
-`payflow-audit-service` existe tanto para conciliação operacional quanto como controle de segurança: qualquer alteração de estado de transação é rastreável a um evento de origem, o que é pré-requisito para investigação de incidente e para compliance (trilha não pode ser alterada nem pelo time de operação).
+`payflow-audit-service` exists both for operational reconciliation and as a security control: any transaction state change is traceable to an origin event, which is a prerequisite for incident investigation and compliance (trail cannot be altered even by the operations team).
 
-## Superfícies revisadas por serviço
+## Surfaces reviewed per service
 
-| Serviço | Superfície crítica | Controle principal |
+| Service | Critical surface | Primary control |
 |---|---|---|
-| `payflow-gateway` | Entrada externa | HMAC + rate limiting |
-| `payflow-cashin-service` / `payflow-cashout-service` | Movimentação de valor | Idempotência + máquina de estados |
-| `payflow-webhook-service` | Saída para terceiros | Assinatura do payload, sem expor dados além do necessário |
-| `payflow-backoffice-api` | Ação humana privilegiada | OIDC + RBAC por endpoint |
-| `payflow-audit-service` | Trilha de verdade | Append-only, sem update/delete |
+| `payflow-gateway` | External entry | HMAC + rate limiting |
+| `payflow-cashin-service` / `payflow-cashout-service` | Value movement | Idempotency + state machine |
+| `payflow-webhook-service` | Outbound to third parties | Payload signature, without exposing data beyond what is necessary |
+| `payflow-backoffice-api` | Privileged human action | OIDC + RBAC per endpoint |
+| `payflow-audit-service` | Trail of truth | Append-only, no update/delete |
