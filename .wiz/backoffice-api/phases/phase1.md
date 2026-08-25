@@ -81,7 +81,7 @@ Configurar o compilador TypeScript 5.6 com `strict: true` e as opções de build
 
 ### P01M03: Configurar ESLint 9 flat config e Prettier
 
-**Status:** 🚧 TODO
+**Status:** ✅ COMPLETE
 **ID:** P01M03
 
 **Goal**
@@ -90,12 +90,12 @@ Aplicar exatamente as regras de lint e format definidas em `docs/technical/guide
 
 **Acceptance Criteria**
 
-- [ ] `eslint.config.mjs` (flat config) usa `typescript-eslint` 8 com type-aware linting apontando para `tsconfig.json`
-- [ ] Regras exatas configuradas: `@typescript-eslint/no-explicit-any: warn`, `@typescript-eslint/explicit-function-return-type: off`, `@typescript-eslint/explicit-module-boundary-types: off`, `@typescript-eslint/no-unused-vars: error` com `argsIgnorePattern: '^_'`, `no-console: warn`, `prefer-const`/`no-var`/`object-shorthand`/`prefer-arrow-callback: error`
-- [ ] `.prettierrc` define `singleQuote: true`, `trailingComma: "all"`, `semi: true`, `printWidth: 100`, `tabWidth: 2`
-- [ ] ESLint e Prettier não conflitam (`eslint-config-prettier` aplicado por último na cadeia)
-- [ ] `npm run lint` e `npm run format:check` passam verde no código existente
-- [ ] Verificado que um arquivo temporário com `var x = 1` faz `npm run lint` sair com código diferente de zero, e o arquivo é removido em seguida
+- [x] `eslint.config.mjs` (flat config) usa `typescript-eslint` 8 com type-aware linting apontando para `tsconfig.json`
+- [x] Regras exatas configuradas: `@typescript-eslint/no-explicit-any: warn`, `@typescript-eslint/explicit-function-return-type: off`, `@typescript-eslint/explicit-module-boundary-types: off`, `@typescript-eslint/no-unused-vars: error` com `argsIgnorePattern: '^_'`, `no-console: warn`, `prefer-const`/`no-var`/`object-shorthand`/`prefer-arrow-callback: error`
+- [x] `.prettierrc` define `singleQuote: true`, `trailingComma: "all"`, `semi: true`, `printWidth: 100`, `tabWidth: 2`
+- [x] ESLint e Prettier não conflitam (`eslint-config-prettier` aplicado por último na cadeia)
+- [x] `npm run lint` e `npm run format:check` passam verde no código existente
+- [x] Verificado que um arquivo temporário com `var x = 1` faz `npm run lint` sair com código diferente de zero, e o arquivo é removido em seguida
 
 ---
 
