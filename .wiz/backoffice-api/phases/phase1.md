@@ -62,7 +62,7 @@ Criar do zero o esqueleto do `services/payflow-backoffice-api` com NestJS 11 sob
 
 ### P01M02: Configurar TypeScript 5.6 em modo strict
 
-**Status:** 🚧 TODO
+**Status:** ✅ COMPLETE
 **ID:** P01M02
 
 **Goal**
@@ -71,11 +71,11 @@ Configurar o compilador TypeScript 5.6 com `strict: true` e as opções de build
 
 **Acceptance Criteria**
 
-- [ ] `tsconfig.json` com `strict: true`, `strictNullChecks`, `noImplicitAny`, `noImplicitOverride`, `forceConsistentCasingInFileNames`, `experimentalDecorators` e `emitDecoratorMetadata` habilitados
-- [ ] `target` e `module` compatíveis com Node.js 24 (`ES2023` ou superior) e `moduleResolution: node`
-- [ ] `tsconfig.build.json` exclui `test`, `**/*.spec.ts` e `dist` do build de produção
-- [ ] Path alias configurado para `src/` e resolvido tanto no build quanto no Jest
-- [ ] `npm run build` gera `dist/` sem nenhum erro ou warning de tipo
+- [x] `tsconfig.json` com `strict: true`, `strictNullChecks`, `noImplicitAny`, `noImplicitOverride`, `forceConsistentCasingInFileNames`, `experimentalDecorators` e `emitDecoratorMetadata` habilitados
+- [x] `target` e `module` compatíveis com Node.js 24 (`ES2023` ou superior) e `moduleResolution: node`
+- [x] `tsconfig.build.json` exclui `test`, `**/*.spec.ts` e `dist` do build de produção
+- [x] Path alias configurado para `src/` e resolvido tanto no build quanto no Jest
+- [x] `npm run build` gera `dist/` sem nenhum erro ou warning de tipo
 
 ---
 
