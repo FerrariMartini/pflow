@@ -101,7 +101,7 @@ Aplicar exatamente as regras de lint e format definidas em `docs/technical/guide
 
 ### P01M04: Configurar Husky, commitlint e lint-staged
 
-**Status:** 🚧 TODO
+**Status:** ✅ COMPLETE
 **ID:** P01M04
 
 **Goal**
@@ -110,11 +110,11 @@ Enforçar Conventional Commits no momento do commit e rodar lint/format apenas n
 
 **Acceptance Criteria**
 
-- [ ] `husky` instalado com hook `commit-msg` executando `commitlint --edit`
-- [ ] `commitlint.config.js` estende `@commitlint/config-conventional` e exige escopo entre parênteses referenciando o serviço
-- [ ] Hook `pre-commit` executa `lint-staged` com `eslint --fix` e `prettier --write` em `*.ts`
-- [ ] Verificado que a mensagem `atualiza coisas` é rejeitada e `feat(backoffice-api): add scaffold` é aceita
-- [ ] Instruções de ativação dos hooks documentadas no README do serviço
+- [x] `husky` instalado com hook `commit-msg` executando `commitlint --edit`
+- [x] `commitlint.config.js` estende `@commitlint/config-conventional` e exige escopo entre parênteses referenciando o serviço
+- [x] Hook `pre-commit` executa `lint-staged` com `eslint --fix` e `prettier --write` em `*.ts`
+- [x] Verificado que a mensagem `atualiza coisas` é rejeitada e `feat(backoffice-api): add scaffold` é aceita
+- [x] Instruções de ativação dos hooks documentadas no README do serviço
 
 ---
 
