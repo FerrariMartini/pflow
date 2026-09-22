@@ -1,66 +1,66 @@
-# Padrões de código
+# Coding standards
 
-Este documento define o boilerplate técnico (versões, lint, format, estrutura) para os dois grupos de subprojeto do hub. Para tópicos com guideline dedicada, ver:
+This document defines the technical boilerplate (versions, lint, format, structure) for the two subproject groups in the hub. For topics with a dedicated guideline, see:
 
-- Injeção de dependência: `docs/technical/guidelines/dependency-injection.md`
-- Tratamento de erros: `docs/technical/guidelines/error-handling.md`
+- Dependency injection: `docs/technical/guidelines/dependency-injection.md`
+- Error handling: `docs/technical/guidelines/error-handling.md`
 - Logging: `docs/technical/guidelines/logging.md`
-- Gates de CI/CD (cobertura mínima, lint, segurança): `docs/technical/ci-cd.md`
-- Estratégia de teste (pirâmide, Definition of Done): `docs/technical/quality/qa-guidelines.md`
+- CI/CD gates (minimum coverage, lint, security): `docs/technical/ci-cd.md`
+- Test strategy (pyramid, Definition of Done): `docs/technical/quality/qa-guidelines.md`
 
-## CORE — serviços de domínio em Go
+## CORE — domain services in Go
 
-Grupo: `payflow-gateway`, `payflow-cashin-service`, `payflow-cashout-service`, `payflow-webhook-service`, `payflow-outbox-relay`, `payflow-audit-service`.
+Group: `payflow-gateway`, `payflow-cashin-service`, `payflow-cashout-service`, `payflow-webhook-service`, `payflow-outbox-relay`, `payflow-audit-service`.
 
-| Item | Padrão |
+| Item | Standard |
 |---|---|
-| Linguagem | Go 1.25 |
-| Lint | `golangci-lint` v2, linters habilitados: `errcheck`, `govet`, `staticcheck`, `gosec`, `revive`, `exhaustive` (switch sobre enum de domínio precisa ser exaustivo — pega `TransactionStatus`/`ReconciliationStatus` incompletos em compile-time de lint, não em produção) |
-| Format | `gofmt`/`goimports`, sem configuração adicional — zero debate de estilo |
-| Testes | `testing` da standard library + `testify` (`require`/`assert`) para asserts legíveis; tabela de casos (`t.Run` por cenário) para regra de máquina de estados |
-| Estrutura | `cmd/` (entrypoint) · `internal/domain` · `internal/usecase` · `internal/adapter` (arquitetura hexagonal, ver `dependency-injection.md`) · `migrations/` quando o serviço tem banco próprio |
-| Timeout de lint em CI | 5 min (ver `docs/technical/ci-cd.md`) |
+| Language | Go 1.25 |
+| Lint | `golangci-lint` v2, enabled linters: `errcheck`, `govet`, `staticcheck`, `gosec`, `revive`, `exhaustive` (switch over domain enum must be exhaustive — catches incomplete `TransactionStatus`/`ReconciliationStatus` at lint compile-time, not in production) |
+| Format | `gofmt`/`goimports`, no additional configuration — zero style debate |
+| Tests | standard library `testing` + `testify` (`require`/`assert`) for readable asserts; case table (`t.Run` per scenario) for state machine rules |
+| Structure | `cmd/` (entrypoint) · `internal/domain` · `internal/usecase` · `internal/adapter` (hexagonal architecture, see `dependency-injection.md`) · `migrations/` when the service has its own database |
+| Lint timeout in CI | 5 min (see `docs/technical/ci-cd.md`) |
 
-Arquitetura hexagonal: `internal/{domain,usecase,adapter}`, domínio sem dependência de framework ou driver externo (sem import de biblioteca de HTTP/Kafka dentro de `domain`) — regra reforçada pelo lint de arquitetura no CI, não só por convenção documentada. Erros de negócio como tipos sentinela (`var ErrX = errors.New(...)`), nunca `panic` em fluxo de negócio (ver `error-handling.md`). `context.Context` como primeiro parâmetro em toda função que atravessa I/O — obrigatório para propagação de `correlationId`/deadline. Nomes de pacote curtos e sem redundância (`cashin`, não `cashinpackage`); sem pacote `utils`/`common` genérico acumulando funções não relacionadas.
+Hexagonal architecture: `internal/{domain,usecase,adapter}`, domain with no dependency on framework or external driver (no HTTP/Kafka library import inside `domain`) — rule enforced by architecture lint in CI, not only by documented convention. Business errors as sentinel types (`var ErrX = errors.New(...)`), never `panic` in business flow (see `error-handling.md`). `context.Context` as first parameter in every function that crosses I/O — mandatory for `correlationId`/deadline propagation. Short package names without redundancy (`cashin`, not `cashinpackage`); no generic `utils`/`common` package accumulating unrelated functions.
 
 ## Backoffice — `payflow-backoffice-api`
 
-| Item | Padrão |
+| Item | Standard |
 |---|---|
 | Runtime | Node.js 24.x |
 | Framework | NestJS 11 |
-| Linguagem | TypeScript 5.6, `strict: true` |
-| Lint | ESLint 9, flat config (`eslint.config.mjs`) via `typescript-eslint` 8 — ver regras abaixo |
+| Language | TypeScript 5.6, `strict: true` |
+| Lint | ESLint 9, flat config (`eslint.config.mjs`) via `typescript-eslint` 8 — see rules below |
 | Format | Prettier: `singleQuote`, `trailingComma: all`, `semi: true`, `printWidth: 100`, `tabWidth: 2` |
-| Commit hooks | `husky` (`commit-msg`) + `commitlint` (`@commitlint/config-conventional`) — Conventional Commits é **enforçado no commit**, não só documentado |
-| Testes | Jest (unit) + `supertest` (e2e) |
-| Estrutura | `src/modules/<dominio>/{controller,service,dto,entities}` |
+| Commit hooks | `husky` (`commit-msg`) + `commitlint` (`@commitlint/config-conventional`) — Conventional Commits is **enforced on commit**, not only documented |
+| Tests | Jest (unit) + `supertest` (e2e) |
+| Structure | `src/modules/<dominio>/{controller,service,dto,entities}` |
 
-Regras de lint específicas (motivo de cada uma, não só a lista):
-- `@typescript-eslint/no-explicit-any`: `warn` (não `error`) — NestJS usa `any` em alguns pontos de framework; vira sinal de revisão, não bloqueio automático.
-- `@typescript-eslint/explicit-function-return-type` e `explicit-module-boundary-types`: `off` — decorators do NestJS já tornam o tipo de retorno óbvio/verboso de anotar.
-- `@typescript-eslint/no-unused-vars`: `error`, com `argsIgnorePattern: '^_'` (permite parâmetro não usado explicitamente prefixado com `_`, comum em assinatura de handler).
-- `no-console`: `warn` — usar o logger estruturado (`docs/technical/guidelines/logging.md`), não `console.log`.
-- `prefer-const`, `no-var`, `object-shorthand`, `prefer-arrow-callback`: `error` — sem debate, são substituições mecânicas sem trade-off.
+Specific lint rules (reason for each, not just the list):
+- `@typescript-eslint/no-explicit-any`: `warn` (not `error`) — NestJS uses `any` in some framework points; becomes a review signal, not automatic block.
+- `@typescript-eslint/explicit-function-return-type` and `explicit-module-boundary-types`: `off` — NestJS decorators already make return type obvious/verbose to annotate.
+- `@typescript-eslint/no-unused-vars`: `error`, with `argsIgnorePattern: '^_'` (allows explicitly unused parameter prefixed with `_`, common in handler signature).
+- `no-console`: `warn` — use structured logger (`docs/technical/guidelines/logging.md`), not `console.log`.
+- `prefer-const`, `no-var`, `object-shorthand`, `prefer-arrow-callback`: `error` — no debate, they are mechanical replacements without trade-off.
 
-DTOs de entrada validados com `class-validator`; nunca confiar em payload não validado dentro da camada de serviço. Serviços não conhecem detalhes de HTTP — isso fica exclusivamente no controller. Erros de domínio usam exceções tipadas (`class X extends DomainError`), nunca `throw new Error(string)` genérico (ver `error-handling.md`).
+Input DTOs validated with `class-validator`; never trust unvalidated payload inside the service layer. Services do not know HTTP details — that stays exclusively in the controller. Domain errors use typed exceptions (`class X extends DomainError`), never generic `throw new Error(string)` (see `error-handling.md`).
 
-## Geral (ambos os grupos)
+## General (both groups)
 
-### Idioma
+### Language
 
-| Artefato | Idioma |
+| Artifact | Language |
 |---|---|
-| Código: identificadores, comentários, descrições de teste, mensagens de erro | Inglês |
-| Mensagens de commit e changelog | Inglês |
-| Agentes e comandos em `.claude/` | Inglês |
-| Documentação em `docs/`, notas de review, retrospectivas | Português |
+| Code: identifiers, comments, test descriptions, error messages | English |
+| Commit messages and changelog | English |
+| Agents and commands in `.claude/` | English |
+| Documentation in `docs/`, review notes, retrospectives | English |
 
-Código e histórico são artefatos técnicos de alcance aberto — ferramentas, bibliotecas e quem der manutenção depois esperam inglês. A documentação de processo é escrita para o time que a lê no dia a dia.
+Code and history are open-scope technical artifacts — tools, libraries, and future maintainers expect English. Process documentation is written for the team that reads it day to day and is maintained in English for consistency with code and tooling.
 
-### Demais convenções
+### Other conventions
 
-- Commits seguem [Conventional Commits](https://www.conventionalcommits.org/): `feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `chore:`, com escopo entre parênteses referenciando o serviço (`feat(backoffice-api): ...`).
-- Nenhum segredo, credencial ou dado real em código, commit ou documentação.
-- Toda decisão arquitetural relevante vira ADR antes da implementação, não depois (`docs/decisions/`).
-- Nenhuma mudança de contrato de API/evento sem atualizar `docs/contract/contract.md` no mesmo PR.
+- Commits follow [Conventional Commits](https://www.conventionalcommits.org/): `feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `chore:`, with scope in parentheses referencing the service (`feat(backoffice-api): ...`).
+- No secrets, credentials, or real data in code, commits, or documentation.
+- Every relevant architectural decision becomes an ADR before implementation, not after (`docs/decisions/`).
+- No API/event contract change without updating `docs/contract/contract.md` in the same PR.

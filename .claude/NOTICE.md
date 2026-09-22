@@ -1,20 +1,20 @@
 # NOTICE
 
-O **PayFlow SDLC Kit** — os agentes e comandos em `.claude/agents/` e `.claude/commands/` — é um fork adaptado do **[wiz-cursor](https://github.com/NSXBet/wiz-cursor)**, framework open source de agentes de IA para SDLC criado pela NSXBet.
+The **PayFlow SDLC Kit** — agents and commands in `.claude/agents/` and `.claude/commands/` — is a fork adapted from **[wiz-cursor](https://github.com/NSXBet/wiz-cursor)**, an open-source AI agent framework for SDLC created by NSXBet.
 
-Não escrevi a ferramenta. O que fiz foi adaptá-la para rodar neste projeto:
+I did not write the tool. What I did was adapt it to run in this project:
 
-- **Portada de Cursor para Claude Code** — os agentes ganharam frontmatter (`name`/`description`) para serem registrados como subagentes, e as referências de delegação passaram de caminho de arquivo (`.cursor/agents/*.md`) para nome de agente.
-- **Estado por PRD, na raiz** — cada PRD tem seu próprio diretório `.wiz/<slug>/` (ex. `.wiz/backoffice-api/`), com `prd.md`, `phases/`, `reviews/` e `retros/`. Não é um `.wiz/` por serviço nem um único `.wiz/` compartilhado por todos os PRDs — o slug do PRD é o que separa o estado de planejamentos distintos, mesmo quando vários PRDs vivem no mesmo serviço.
-- **Contexto local apontando para `docs/`** — as guidelines, ADRs e contratos do repositório entram como contexto autoritativo do planejamento, de modo que a ferramenta siga os padrões já definidos aqui em vez dos seus defaults.
-- **`/wiz-retro` e `wiz-retro-analyst`** — o wiz-cursor upstream não tem um comando de retrospectiva de fase. Esta é uma extensão real feita neste fork (não apenas uma adaptação de algo que já existia): um comando e um agente novos que agrupam os achados das revisões de uma fase encerrada e decidem, para cada grupo, se vira débito aceito, atualização de guideline ou ADR. Ver `.claude/commands/wiz-retro.md` e `.claude/agents/wiz-retro-analyst.md`.
-- **Visibilidade no Jira** — no processo original, uma Cursor Skill lia `.wiz/<slug>/` e criava épico / task / subtask via API REST do Jira. Isso **não foi portado** para este repositório: não é comando `wiz-*`, não há skill nem credencial aqui. O registro do processo está em `.claude/jira-visibility.md`.
+- **Ported from Cursor to Claude Code** — agents gained frontmatter (`name`/`description`) to register as subagents, and delegation references moved from file paths (`.cursor/agents/*.md`) to agent names.
+- **State per PRD, at repository root** — each PRD has its own `.wiz/<slug>/` directory (e.g. `.wiz/backoffice-api/`), with `prd.md`, `phases/`, `reviews/`, and `retros/`. It is not one `.wiz/` per service nor a single `.wiz/` shared by all PRDs — the PRD slug is what separates distinct planning states, even when several PRDs live in the same service.
+- **Local context pointing at `docs/`** — repository guidelines, ADRs, and contracts enter as authoritative planning context so the tool follows standards already defined here instead of its defaults.
+- **`/wiz-retro` and `wiz-retro-analyst`** — upstream wiz-cursor has no phase retrospective command. This is a real extension in this fork (not merely an adaptation of something that already existed): a new command and agent that group findings from reviews of a closed phase and decide, for each group, whether it becomes accepted debt, a guideline update, or an ADR. See `.claude/commands/wiz-retro.md` and `.claude/agents/wiz-retro-analyst.md`.
+- **Jira visibility** — in the original process, a Cursor Skill read `.wiz/<slug>/` and created epic / task / subtask via the Jira REST API. This was **not ported** to this repository: it is not a `wiz-*` command, and there is no skill or credential here. The process is recorded in `.claude/jira-visibility.md`.
 
-A mecânica de planejamento — geração de PRD por Q&A, decomposição em fases e milestones, gates de qualidade, revisão por especialista de linguagem — é do wiz-cursor.
+Planning mechanics — PRD generation via Q&A, decomposition into phases and milestones, quality gates, review by language specialist — come from wiz-cursor.
 
-## Licença original
+## Original license
 
-Distribuído sob licença MIT, copyright NSXBet. O aviso abaixo é reproduzido conforme exigido pelos termos da licença:
+Distributed under the MIT License, copyright NSXBet. The notice below is reproduced as required by the license terms:
 
 ```
 MIT License
@@ -32,4 +32,4 @@ The above copyright notice and this permission notice shall be included in all
 copies or substantial portions of the Software.
 ```
 
-Ver o repositório original para o texto completo e atualizado da licença.
+See the original repository for the full and current license text.

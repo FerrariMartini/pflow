@@ -1,4 +1,4 @@
-# Phase 5: Organizations e Tenants — CRUD, Bearer Token e Propagação Redis Resiliente
+# Phase 5: Organizations and Tenants — CRUD, Bearer Token, and Resilient Redis Propagation
 
 **Duration**: ~4 days (34 milestones @ 1h each)
 **Dependencies**: Phase 4
@@ -6,148 +6,148 @@
 
 ## Goal
 
-Entregar a gestão de Organizations e Tenants no `core-db` junto com o mecanismo de propagação de configuração para o Redis descrito na §11 e §11.1 do PRD — o ponto onde o backoffice deixa de ser só leitura e passa a alimentar o core em tempo real.
+Deliver Organization and Tenant management on `core-db` together with the configuration propagation mechanism to Redis described in PRD §11 and §11.1 — the point where the backoffice stops being read-only and starts feeding the core in real time.
 
-Entregas principais:
-- `GET/POST/PUT/DELETE /api/organizations` (ADMIN, soft delete), com `slug` único.
-- `GET /api/tenants`, `GET /api/tenants/:id`, `POST`, `PUT`, `DELETE /api/tenants/:id` — CRUD completo com geração de Bearer Token em `tenant_auth` (hash + `token_hint`, token bruto exibido uma única vez na resposta de criação).
-- `TenantConfigPropagationService`: escrita no `core-db` como fonte de verdade seguida da atualização das chaves `tenant:config:*`, `tenant:limits:*`, `tenant:providers:*` e `routing:weights:*` no Redis Core.
-- Retry local com backoff + jitter parametrizado por `REDIS_PROPAGATION_MAX_RETRIES`, `REDIS_PROPAGATION_BASE_DELAY_MS`, `REDIS_PROPAGATION_MAX_DELAY_MS`.
-- Contrato forte (rollback da transação + 500) para criação de tenant, criação de provider e rotação de bearer token.
-- Contrato com reconciliação (persistir em `redis_propagation_outbox` no `core-db` + log `redis_propagation_failed`) para updates e deletes de configuração.
-- `POST /api/tenants/:id/resync-redis` (ADMIN) para reprocessamento manual.
-- `GET /api/health/redis-propagation` expondo `redis_propagation_pending_total`.
+Main deliverables:
+- `GET/POST/PUT/DELETE /api/organizations` (ADMIN, soft delete), with unique `slug`.
+- `GET /api/tenants`, `GET /api/tenants/:id`, `POST`, `PUT`, `DELETE /api/tenants/:id` — full CRUD with Bearer Token generation in `tenant_auth` (hash + `token_hint`, raw token shown once in create response).
+- `TenantConfigPropagationService`: write to `core-db` as source of truth followed by updating keys `tenant:config:*`, `tenant:limits:*`, `tenant:providers:*`, and `routing:weights:*` on Redis Core.
+- Local retry with backoff + jitter parameterized by `REDIS_PROPAGATION_MAX_RETRIES`, `REDIS_PROPAGATION_BASE_DELAY_MS`, `REDIS_PROPAGATION_MAX_DELAY_MS`.
+- Strong contract (transaction rollback + 500) for tenant creation, provider creation, and bearer token rotation.
+- Reconciliation contract (persist in `redis_propagation_outbox` on `core-db` + `redis_propagation_failed` log) for config updates and deletes.
+- `POST /api/tenants/:id/resync-redis` (ADMIN) for manual reprocessing.
+- `GET /api/health/redis-propagation` exposing `redis_propagation_pending_total`.
 
 ## Phase Acceptance Criteria
 
-- CRUD de organizations e tenants completo, com RBAC aplicado por endpoint conforme a matriz (§6): tenants é ADMIN para escrita e ADMIN+OPERATIONS para leitura, organizations é ADMIN-only — coberto por teste e2e positivo e negativo.
-- Criação de tenant grava `tenant_auth` com hash do Bearer Token e `token_hint`; o token bruto aparece uma única vez na resposta e nunca é persistido em claro, cacheado ou logado — verificado por teste.
-- Falha de Redis na criação de tenant faz rollback completo no `core-db` e retorna 500: nenhum tenant órfão fica persistido — teste de integração com Redis derrubado/mockado em falha.
-- Falha de Redis em update/delete de configuração persiste o item em `redis_propagation_outbox`, emite o log estruturado `redis_propagation_failed` e mantém a resposta de sucesso — teste de integração dedicado.
-- Retry aplica backoff com jitter e respeita as três variáveis de tuning; teste unitário com timers falsos cobre esgotamento de tentativas e sucesso na segunda tentativa.
-- `POST /api/tenants/:id/resync-redis` reconstrói todas as chaves do tenant a partir do `core-db` e zera os itens correspondentes do outbox; `GET /api/health/redis-propagation` reflete a queda de `redis_propagation_pending_total` — coberto por e2e.
-- Toda escrita gera registro em `backoffice_audit_log`, e tenant desativado persiste `deleted_at` + `deleted_by`.
-- Cobertura ≥ 90% em `OrganizationService`, `TenantService`, `TenantConfigPropagationService` e repositories; `scripts/pre-commit.sh` verde.
-- `docs/contract/contract.md` atualizado com os endpoints de organizations e tenants no mesmo PR.
+- Complete organizations and tenants CRUD, with RBAC applied per endpoint per matrix (§6): tenants ADMIN for write and ADMIN+OPERATIONS for read, organizations ADMIN-only — covered by positive and negative e2e test.
+- Tenant creation writes `tenant_auth` with Bearer Token hash and `token_hint`; raw token appears once in response and is never stored in plaintext, cached, or logged — verified by test.
+- Redis failure on tenant creation performs full rollback on `core-db` and returns 500: no orphan tenant remains persisted — integration test with Redis down/mocked on failure.
+- Redis failure on config update/delete persists item in `redis_propagation_outbox`, emits structured `redis_propagation_failed` log, and keeps success response — dedicated integration test.
+- Retry applies backoff with jitter and respects the three tuning variables; unit test with fake timers covers exhausted attempts and success on second attempt.
+- `POST /api/tenants/:id/resync-redis` rebuilds all tenant keys from `core-db` and clears corresponding outbox items; `GET /api/health/redis-propagation` reflects drop in `redis_propagation_pending_total` — covered by e2e.
+- Every write generates a record in `backoffice_audit_log`, and deactivated tenant persists `deleted_at` + `deleted_by`.
+- Coverage ≥ 90% in `OrganizationService`, `TenantService`, `TenantConfigPropagationService`, and repositories; `scripts/pre-commit.sh` green.
+- `docs/contract/contract.md` updated with organizations and tenants endpoints in the same PR.
 
 ## Milestones
 
 <!-- Milestones appended by /wiz-milestones -->
-### P05M01: Criar entidade Organization e a interface do repositório
+### P05M01: Create Organization entity and repository interface
 
 **Status:** 🚧 TODO
 **ID:** P05M01
 
 **Goal**
 
-Modelar a entidade TypeORM `Organization` na DataSource nomeada `core`, refletindo exatamente o schema criado na Phase 1 (§7 do PRD), e declarar o contrato `IOrganizationRepository` em `src/organizations/interfaces/`.
+Model the TypeORM `Organization` entity on the named `core` DataSource, reflecting exactly the schema created in Phase 1 (PRD §7), and declare contract `IOrganizationRepository` in `src/organizations/interfaces/`.
 
 **Acceptance Criteria**
 
-- [ ] `src/organizations/entities/organization.entity.ts` mapeia `id` (UUID), `name` (varchar 100), `slug` (varchar 50, único), `active`, `created_at`, `updated_at`, `deleted_at`, `deleted_by`
-- [ ] A entidade está registrada apenas na DataSource `core` e é consumida via `@InjectRepository(Organization, 'core')`
-- [ ] `IOrganizationRepository` declara `findAll`, `findById`, `findBySlug`, `create`, `update` e `softDelete`, sem nenhum tipo do TypeORM vazando na assinatura
-- [ ] A entidade estende o `BaseEntity` comum da Phase 1 quando isso não conflitar com o schema do `core-db`
-- [ ] Nenhum import de infraestrutura em `interfaces/`, conforme `docs/technical/guidelines/dependency-injection.md`
-- [ ] `npm run lint` e `npm run build` passam
+- [ ] `src/organizations/entities/organization.entity.ts` maps `id` (UUID), `name` (varchar 100), `slug` (varchar 50, unique), `active`, `created_at`, `updated_at`, `deleted_at`, `deleted_by`
+- [ ] Entity is registered only on `core` DataSource and consumed via `@InjectRepository(Organization, 'core')`
+- [ ] `IOrganizationRepository` declares `findAll`, `findById`, `findBySlug`, `create`, `update`, and `softDelete`, with no TypeORM types leaking into signatures
+- [ ] Entity extends Phase 1 common `BaseEntity` when that does not conflict with `core-db` schema
+- [ ] No infrastructure import in `interfaces/`, per `docs/technical/guidelines/dependency-injection.md`
+- [ ] `npm run lint` and `npm run build` pass
 
 ---
 
-### P05M02: Implementar OrganizationRepository na DataSource core
+### P05M02: Implement OrganizationRepository on core DataSource
 
 **Status:** 🚧 TODO
 **ID:** P05M02
 
 **Goal**
 
-Implementar `OrganizationRepository` contra o `core-db`, cobrindo consulta, criação, atualização e soft delete com `deleted_at` + `deleted_by`.
+Implement `OrganizationRepository` against `core-db`, covering query, create, update, and soft delete with `deleted_at` + `deleted_by`.
 
 **Acceptance Criteria**
 
-- [ ] `OrganizationRepository` implementa `IOrganizationRepository` e é registrado por token de interface no `OrganizationModule`
-- [ ] Todas as leituras excluem registros com `deleted_at` preenchido
-- [ ] `findBySlug` permite detectar colisão de `slug` antes do insert, incluindo organizações desativadas
-- [ ] `softDelete(id, actorId)` grava `deleted_at = now()`, `deleted_by = actorId` e `active = false` em uma única operação
-- [ ] `update` atualiza `updated_at` e nunca permite alterar `id` ou `created_at`
-- [ ] Teste de integração contra o `postgres-core` do compose cobre criação, leitura, atualização, soft delete e a exclusão do registro deletado nas listagens
+- [ ] `OrganizationRepository` implements `IOrganizationRepository` and is registered by interface token in `OrganizationModule`
+- [ ] All reads exclude records with `deleted_at` set
+- [ ] `findBySlug` detects `slug` collision before insert, including deactivated organizations
+- [ ] `softDelete(id, actorId)` writes `deleted_at = now()`, `deleted_by = actorId`, and `active = false` in a single operation
+- [ ] `update` updates `updated_at` and never allows changing `id` or `created_at`
+- [ ] Integration test against compose `postgres-core` covers create, read, update, soft delete, and exclusion of deleted record from listings
 
 ---
 
-### P05M03: Implementar OrganizationService com regras de slug e desativação
+### P05M03: Implement OrganizationService with slug rules and deactivation
 
 **Status:** 🚧 TODO
 **ID:** P05M03
 
 **Goal**
 
-Implementar `OrganizationService` (implementando `IOrganizationService`) com as regras de negócio de unicidade de `slug`, normalização e bloqueio de desativação de organização que ainda possui tenants ativos.
+Implement `OrganizationService` (implementing `IOrganizationService`) with business rules for `slug` uniqueness, normalization, and blocking deactivation of an organization that still has active tenants.
 
 **Acceptance Criteria**
 
-- [ ] `create` normaliza o `slug` (lowercase, trim) e rejeita duplicidade com `DomainError` tipado `ORGANIZATION_SLUG_ALREADY_EXISTS`
-- [ ] `update` rejeita troca de `slug` para um valor já usado por outra organização, com o mesmo `code`
-- [ ] `findById` lança `ORGANIZATION_NOT_FOUND` quando o registro não existe ou está soft-deletado
-- [ ] `deactivate` lança `ORGANIZATION_HAS_ACTIVE_TENANTS` quando existem tenants ativos vinculados
-- [ ] Nenhum `throw new Error(...)` em fluxo de negócio, conforme `docs/technical/guidelines/error-handling.md`
-- [ ] O service recebe `IOrganizationRepository` por token de interface, sem acesso direto ao TypeORM
+- [ ] `create` normalizes `slug` (lowercase, trim) and rejects duplicates with typed `DomainError` `ORGANIZATION_SLUG_ALREADY_EXISTS`
+- [ ] `update` rejects `slug` change to a value already used by another organization, with the same `code`
+- [ ] `findById` throws `ORGANIZATION_NOT_FOUND` when record does not exist or is soft-deleted
+- [ ] `deactivate` throws `ORGANIZATION_HAS_ACTIVE_TENANTS` when active linked tenants exist
+- [ ] No `throw new Error(...)` in business flow, per `docs/technical/guidelines/error-handling.md`
+- [ ] Service receives `IOrganizationRepository` by interface token, no direct TypeORM access
 
 ---
 
-### P05M04: Expor GET/POST/PUT/DELETE /api/organizations restrito a ADMIN
+### P05M04: Expose GET/POST/PUT/DELETE /api/organizations restricted to ADMIN
 
 **Status:** 🚧 TODO
 **ID:** P05M04
 
 **Goal**
 
-Criar os DTOs de entrada e saída, o `OrganizationController` e o `OrganizationModule`, expondo os quatro endpoints de organizations exclusivamente para o perfil ADMIN conforme a matriz da §6 do PRD.
+Create input and output DTOs, `OrganizationController`, and `OrganizationModule`, exposing the four organization endpoints exclusively for ADMIN profile per §6 PRD matrix.
 
 **Acceptance Criteria**
 
-- [ ] `CreateOrganizationDto` e `UpdateOrganizationDto` validam `name` (1–100) e `slug` (1–50, padrão `^[a-z0-9-]+$`) com `class-validator`
-- [ ] `GET /api/organizations` (paginado com o `PaginationDto` da Phase 2), `POST /api/organizations`, `PUT /api/organizations/:id` e `DELETE /api/organizations/:id` estão implementados
-- [ ] Todos os quatro endpoints declaram `@Roles('ADMIN')`; nenhum deles é `@Public()`
-- [ ] `DELETE` executa soft delete usando o `user_id` do `@CurrentUser()` como `deleted_by` e responde 204
-- [ ] O controller injeta apenas `IOrganizationService` por token, nunca o repositório
-- [ ] Endpoints anotados com decorators Swagger, incluindo o envelope de erro do `docs/contract/contract.md`
+- [ ] `CreateOrganizationDto` and `UpdateOrganizationDto` validate `name` (1–100) and `slug` (1–50, pattern `^[a-z0-9-]+$`) with `class-validator`
+- [ ] `GET /api/organizations` (paginated with Phase 2 `PaginationDto`), `POST /api/organizations`, `PUT /api/organizations/:id`, and `DELETE /api/organizations/:id` are implemented
+- [ ] All four endpoints declare `@Roles('ADMIN')`; none is `@Public()`
+- [ ] `DELETE` performs soft delete using `@CurrentUser()` `user_id` as `deleted_by` and responds 204
+- [ ] Controller injects only `IOrganizationService` by token, never the repository
+- [ ] Endpoints annotated with Swagger decorators, including `docs/contract/contract.md` error envelope
 
 ---
 
-### P05M05: Cobrir OrganizationService e OrganizationRepository com testes unitários
+### P05M05: Cover OrganizationService and OrganizationRepository with unit tests
 
 **Status:** 🚧 TODO
 **ID:** P05M05
 
 **Goal**
 
-Escrever a suíte unitária de organizations mocando `IOrganizationRepository`, cobrindo caminho feliz e todos os erros de negócio até atingir a meta de cobertura da fase.
+Write the organizations unit suite mocking `IOrganizationRepository`, covering happy path and all business errors until reaching phase coverage target.
 
 **Acceptance Criteria**
 
-- [ ] Testes cobrem `create` (sucesso, slug duplicado, normalização de slug), `update` (sucesso, slug em uso, não encontrado), `findAll`, `findById` e `deactivate` (sucesso, com tenants ativos)
-- [ ] Cada `DomainError` do módulo tem pelo menos um teste dedicado, conforme `docs/technical/quality/qa-guidelines.md`
-- [ ] Os testes mocam a interface do repositório, não a classe concreta
-- [ ] Cobertura de `OrganizationService` e `OrganizationRepository` ≥ 90% em statements, branches e lines
-- [ ] `npm run test:cov` passa sem testes pulados (`.skip`, `.todo`) e sem `any` nos mocks
+- [ ] Tests cover `create` (success, duplicate slug, slug normalization), `update` (success, slug in use, not found), `findAll`, `findById`, and `deactivate` (success, with active tenants)
+- [ ] Each module `DomainError` has at least one dedicated test, per `docs/technical/quality/qa-guidelines.md`
+- [ ] Tests mock repository interface, not concrete class
+- [ ] Coverage of `OrganizationService` and `OrganizationRepository` ≥ 90% in statements, branches, and lines
+- [ ] `npm run test:cov` passes with no skipped tests (`.skip`, `.todo`) and no `any` in mocks
 
 ---
 
-### P05M06: Validar /api/organizations com testes e2e de RBAC e ciclo de vida
+### P05M06: Validate /api/organizations with e2e RBAC and lifecycle tests
 
 **Status:** 🚧 TODO
 **ID:** P05M06
 
 **Goal**
 
-Escrever os testes e2e de organizations contra a stack do compose, cobrindo o ciclo completo de CRUD e o comportamento negativo de RBAC para os perfis sem permissão.
+Write organizations e2e tests against compose stack, covering full CRUD cycle and negative RBAC behavior for profiles without permission.
 
 **Acceptance Criteria**
 
-- [ ] Teste e2e cobre create → list → get → update → delete com um usuário ADMIN autenticado
-- [ ] Teste parametrizado prova 403 para `OPERATIONS`, `FINANCE`, `COMPLIANCE` e `SUPPORT` nos quatro endpoints
-- [ ] Requisição sem JWT retorna 401 em todos os endpoints do módulo
-- [ ] `POST` com `slug` já existente retorna o status e o `code` mapeados pelo `DomainExceptionFilter`
-- [ ] Após o `DELETE`, a organização some das listagens e o registro persiste `deleted_at` e `deleted_by` no `core-db`
-- [ ] Cada escrita bem-sucedida gera exatamente um registro em `backoffice_audit_log` com `resource_type = 'ORGANIZATION'`
+- [ ] E2e test covers create → list → get → update → delete with authenticated ADMIN user
+- [ ] Parameterized test proves 403 for `OPERATIONS`, `FINANCE`, `COMPLIANCE`, and `SUPPORT` on all four endpoints
+- [ ] Request without JWT returns 401 on all module endpoints
+- [ ] `POST` with existing `slug` returns status and `code` mapped by `DomainExceptionFilter`
+- [ ] After `DELETE`, organization disappears from listings and record persists `deleted_at` and `deleted_by` in `core-db`
+- [ ] Each successful write generates exactly one record in `backoffice_audit_log` with `resource_type = 'ORGANIZATION'`
 
 ---

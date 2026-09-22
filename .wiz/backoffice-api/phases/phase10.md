@@ -1,4 +1,4 @@
-# Phase 10: Gestão de Usuários Internos e Notificação por Email
+# Phase 10: Internal User Management and Email Notification
 
 **Duration**: ~3 days (20 milestones @ 1h each)
 **Dependencies**: Phase 4
@@ -6,157 +6,157 @@
 
 ## Goal
 
-Entregar a administração de usuários do backoffice (`src/users/`), incluindo o controle granular de escopo que o ADMIN exerce sobre o que cada operador enxerga — a contraparte de escrita do scoping implementado na Fase 4.
+Deliver backoffice user administration (`src/users/`), including the granular scope control the ADMIN exercises over what each operator sees — the write-side counterpart to scoping implemented in Phase 4.
 
-Entregas principais:
-- `GET /api/users` (filtros `active`, `roleId`, paginação) e `GET /api/users/:id`, ambos restritos à Organization do JWT.
-- `POST /api/users`: cadastro com senha inicial sob a password policy, disparando notificação por email (SES em produção, MailHog em dev) com retry/outbox em caso de falha de envio.
-- `PUT /api/users/:id`: perfil, escopo (`tenantIds`), `active` e `twoFactorEnabled`.
+Main deliverables:
+- `GET /api/users` (filters `active`, `roleId`, pagination) and `GET /api/users/:id`, both restricted to the JWT Organization.
+- `POST /api/users`: registration with initial password under the password policy, triggering email notification (SES in production, MailHog in dev) with retry/outbox on send failure.
+- `PUT /api/users/:id`: profile, scope (`tenantIds`), `active`, and `twoFactorEnabled`.
 - `DELETE /api/users/:id`: soft delete (`deleted_at` + `deleted_by`).
-- Validação de que todo `tenantId` informado pertence à Organization do usuário, no `POST` e no `PUT`.
+- Validation that every supplied `tenantId` belongs to the user's Organization, on `POST` and `PUT`.
 
 ## Phase Acceptance Criteria
 
-- Os cinco endpoints são ADMIN-only e retornam 403 para os outros quatro perfis — cobertos por e2e.
-- Um ADMIN não consegue ler, criar, alterar nem desativar usuário de outra Organization — teste de integração explícito (P0 — isolamento).
-- `tenantIds` contendo tenant de outra Organization ou tenant inativo é rejeitado com `DomainError` tipado, tanto no `POST` quanto no `PUT`; `tenantIds` vazio é aceito e significa "todos os tenants da Organization".
-- Alterar `twoFactorEnabled` para `false` em usuário ADMIN ou COMPLIANCE é rejeitado (2FA é obrigatório para esses perfis) — caso de borda com teste.
-- Falha no envio do email de cadastro não perde o usuário criado: o item entra na fila de retry/outbox e o log `error` estruturado é emitido — teste com transporte de email em falha.
-- Nenhuma resposta de usuário expõe `password_hash`, e nenhum log de `/api/users` contém email em claro.
-- Toda escrita gera registro em `backoffice_audit_log` com `payload_before`/`payload_after` sanitizados.
-- Cobertura ≥ 90% em `UserService`; `scripts/pre-commit.sh` verde e `docs/contract/contract.md` atualizado no mesmo PR.
+- All five endpoints are ADMIN-only and return 403 for the other four profiles — covered by e2e.
+- An ADMIN cannot read, create, update, or deactivate a user from another Organization — explicit integration test (P0 — isolation).
+- `tenantIds` containing a tenant from another Organization or an inactive tenant is rejected with typed `DomainError`, on both `POST` and `PUT`; empty `tenantIds` is accepted and means "all tenants in the Organization".
+- Setting `twoFactorEnabled` to `false` for ADMIN or COMPLIANCE user is rejected (2FA is mandatory for those profiles) — edge case with test.
+- Email send failure on registration does not lose the created user: the item enters retry/outbox queue and structured `error` log is emitted — test with failing email transport.
+- No user response exposes `password_hash`, and no `/api/users` log contains plaintext email.
+- Every write generates a record in `backoffice_audit_log` with sanitized `payload_before`/`payload_after`.
+- Coverage ≥ 90% in `UserService`; `scripts/pre-commit.sh` green and `docs/contract/contract.md` updated in the same PR.
 
 ## Milestones
 
 <!-- Milestones appended by /wiz-milestones -->
 
-### P10M01: Criar a estrutura de `src/users/` e a entity `BackofficeUser`
+### P10M01: Create `src/users/` structure and `BackofficeUser` entity
 
 **Status:** 🚧 TODO
 **ID:** P10M01
 
 **Goal**
 
-Criar o esqueleto de diretórios de `src/users/` conforme a §9 do PRD e a entity TypeORM `BackofficeUser`, mapeando a tabela `backoffice_users` do `backoffice-db` criada na Fase 1, com `password_hash` blindado contra serialização.
+Create the `src/users/` directory skeleton per PRD §9 and the TypeORM `BackofficeUser` entity, mapping the `backoffice_users` table in `backoffice-db` created in Phase 1, with `password_hash` shielded against serialization.
 
 **Acceptance Criteria**
 
-- [ ] Diretórios `interfaces/`, `controllers/`, `services/`, `repositories/`, `entities/` e `dto/` criados em `src/users/`
-- [ ] `BackofficeUser` mapeia `id`, `organization_id`, `email`, `name`, `role`, `tenant_ids`, `active`, `two_factor_enabled`, `password_hash`, `deleted_at`, `deleted_by`, `created_at` e `updated_at`
-- [ ] `role` é tipada pelo enum dos cinco perfis da §6 do PRD (`ADMIN`, `OPERATIONS`, `FINANCE`, `COMPLIANCE`, `SUPPORT`), sem string literal solta
-- [ ] `tenant_ids` mapeado como array de UUID com default `{}`, conforme a §10 do PRD
-- [ ] `password_hash` declarado com `select: false` e `@Exclude()`, de modo que nenhuma serialização padrão o exponha
-- [ ] Teste unitário prova que serializar a entity não produz a chave `password_hash`
-- [ ] `npm run lint` e `npm run build` passam
+- [ ] Directories `interfaces/`, `controllers/`, `services/`, `repositories/`, `entities/`, and `dto/` created under `src/users/`
+- [ ] `BackofficeUser` maps `id`, `organization_id`, `email`, `name`, `role`, `tenant_ids`, `active`, `two_factor_enabled`, `password_hash`, `deleted_at`, `deleted_by`, `created_at`, and `updated_at`
+- [ ] `role` is typed by the enum of the five §6 PRD profiles (`ADMIN`, `OPERATIONS`, `FINANCE`, `COMPLIANCE`, `SUPPORT`), no loose string literal
+- [ ] `tenant_ids` mapped as UUID array with default `{}`, per PRD §10
+- [ ] `password_hash` declared with `select: false` and `@Exclude()`, so default serialization never exposes it
+- [ ] Unit test proves serializing the entity does not produce the `password_hash` key
+- [ ] `npm run lint` and `npm run build` pass
 
 ---
 
-### P10M02: Definir `IUserRepository`, `IUserService` e o `UsersModule`
+### P10M02: Define `IUserRepository`, `IUserService`, and `UsersModule`
 
 **Status:** 🚧 TODO
 **ID:** P10M02
 
 **Goal**
 
-Declarar os contratos do módulo de usuários e registrar os providers por token de injeção, seguindo o padrão Hexagonal Light da §9 do PRD e `docs/technical/guidelines/dependency-injection.md`.
+Declare user module contracts and register providers by injection token, following PRD §9 Hexagonal Light pattern and `docs/technical/guidelines/dependency-injection.md`.
 
 **Acceptance Criteria**
 
-- [ ] `IUserRepository` declara `findManyByOrganization`, `findByIdInOrganization`, `findByEmailInOrganization`, `create`, `update` e `softDelete`, todos tipados sem `any`
-- [ ] `IUserService` declara `list`, `getById`, `create`, `update` e `deactivate`
-- [ ] Toda assinatura de leitura e de escrita recebe `organizationId` explicitamente — nenhuma operação do contrato permite acesso sem escopo de Organization
-- [ ] `UsersModule` registra `{ provide: 'IUserService', useClass: UserService }` e `{ provide: 'IUserRepository', useClass: UserRepository }`
-- [ ] `UserController` injeta apenas `IUserService`; nenhuma referência a repository ou a TypeORM no controller
-- [ ] `UsersModule` é importado por `AppModule` e a aplicação sobe sem provider órfão nem import circular
-- [ ] `npm run lint` e `npm run build` passam
+- [ ] `IUserRepository` declares `findManyByOrganization`, `findByIdInOrganization`, `findByEmailInOrganization`, `create`, `update`, and `softDelete`, all typed without `any`
+- [ ] `IUserService` declares `list`, `getById`, `create`, `update`, and `deactivate`
+- [ ] Every read and write signature receives `organizationId` explicitly — no contract operation allows access without Organization scope
+- [ ] `UsersModule` registers `{ provide: 'IUserService', useClass: UserService }` and `{ provide: 'IUserRepository', useClass: UserRepository }`
+- [ ] `UserController` injects only `IUserService`; no repository or TypeORM reference in the controller
+- [ ] `UsersModule` is imported by `AppModule` and the app boots without orphan provider or circular import
+- [ ] `npm run lint` and `npm run build` pass
 
 ---
 
-### P10M03: Implementar `UserRepository` escopado por Organization
+### P10M03: Implement Organization-scoped `UserRepository`
 
 **Status:** 🚧 TODO
 **ID:** P10M03
 
 **Goal**
 
-Implementar o `UserRepository` sobre o `backoffice-db` com todas as queries filtrando `organization_id` e descartando registros soft-deleted, cobrindo leitura e escrita.
+Implement `UserRepository` on `backoffice-db` with all queries filtering `organization_id` and excluding soft-deleted records, covering read and write.
 
 **Acceptance Criteria**
 
-- [ ] Toda query aplica `WHERE organization_id = :organizationId AND deleted_at IS NULL`, sem exceção
-- [ ] `findManyByOrganization` aceita os filtros opcionais `active` e `roleId` mais os parâmetros de paginação, retornando itens e total em uma única chamada
-- [ ] Ordenação determinística (`created_at DESC, id DESC`) para paginação estável entre páginas
-- [ ] `findByEmailInOrganization` é case-insensitive e também escopado por Organization
-- [ ] `softDelete` grava `deleted_at` e `deleted_by` conforme o padrão da Fase 4, sem remover a linha
-- [ ] `password_hash` só é carregado no método explicitamente usado na criação; consultas de listagem e detalhe nunca o trazem do banco
-- [ ] Teste de integração contra o `backoffice-db` do compose cobre listagem filtrada, detalhe, criação, atualização e soft delete
-- [ ] `npm run lint` e `npm test` passam sem erro, falha ou teste pulado
+- [ ] Every query applies `WHERE organization_id = :organizationId AND deleted_at IS NULL`, without exception
+- [ ] `findManyByOrganization` accepts optional filters `active` and `roleId` plus pagination parameters, returning items and total in a single call
+- [ ] Deterministic ordering (`created_at DESC, id DESC`) for stable pagination across pages
+- [ ] `findByEmailInOrganization` is case-insensitive and also scoped by Organization
+- [ ] `softDelete` writes `deleted_at` and `deleted_by` per Phase 4 pattern, without removing the row
+- [ ] `password_hash` is loaded only in the method explicitly used on creation; list and detail queries never fetch it from the database
+- [ ] Integration test against compose `backoffice-db` covers filtered listing, detail, create, update, and soft delete
+- [ ] `npm run lint` and `npm test` pass with no error, failure, or skipped test
 
 ---
 
-### P10M04: Criar os DTOs de consulta e de resposta do módulo de usuários
+### P10M04: Create user module query and response DTOs
 
 **Status:** 🚧 TODO
 **ID:** P10M04
 
 **Goal**
 
-Criar `ListUsersQueryDto` (filtros `active` e `roleId` sobre a paginação compartilhada da Fase 2) e `UserResponseDto`, garantindo por construção que nenhuma resposta carregue `password_hash`.
+Create `ListUsersQueryDto` (filters `active` and `roleId` on Phase 2 shared pagination) and `UserResponseDto`, ensuring by construction that no response carries `password_hash`.
 
 **Acceptance Criteria**
 
-- [ ] `ListUsersQueryDto` compõe o `PaginationDto` da Fase 2 (default 20, max 100)
-- [ ] `active` é opcional e aceita apenas booleano, transformado a partir de `"true"`/`"false"`
-- [ ] `roleId` é validado contra o enum dos cinco perfis; valor fora do enum retorna 400 com o envelope de erro do `docs/contract/contract.md`
-- [ ] `UserResponseDto` expõe exatamente `id`, `email`, `name`, `role`, `tenantIds`, `active`, `twoFactorEnabled`, `createdAt` e `updatedAt` — e nenhum outro campo
-- [ ] `UserResponseDto` não declara `password_hash` nem `passwordHash` sob nenhuma forma
-- [ ] Query param não declarado no DTO é rejeitado com 400 pelo `forbidNonWhitelisted` global da Fase 2
-- [ ] Teste unitário do mapper entity → `UserResponseDto` prova a ausência de `password_hash` mesmo quando a entity o carrega preenchido
-- [ ] `npm run lint` e `npm test` passam sem erro, falha ou teste pulado
+- [ ] `ListUsersQueryDto` composes Phase 2 `PaginationDto` (default 20, max 100)
+- [ ] `active` is optional and accepts boolean only, transformed from `"true"`/`"false"`
+- [ ] `roleId` is validated against the five-profile enum; out-of-enum value returns 400 with `docs/contract/contract.md` error envelope
+- [ ] `UserResponseDto` exposes exactly `id`, `email`, `name`, `role`, `tenantIds`, `active`, `twoFactorEnabled`, `createdAt`, and `updatedAt` — no other field
+- [ ] `UserResponseDto` does not declare `password_hash` or `passwordHash` in any form
+- [ ] Query param not declared in the DTO is rejected with 400 by Phase 2 global `forbidNonWhitelisted`
+- [ ] Unit test of entity → `UserResponseDto` mapper proves absence of `password_hash` even when the entity loads it populated
+- [ ] `npm run lint` and `npm test` pass with no error, failure, or skipped test
 
 ---
 
-### P10M05: Implementar `GET /api/users` com filtros e paginação
+### P10M05: Implement `GET /api/users` with filters and pagination
 
 **Status:** 🚧 TODO
 **ID:** P10M05
 
 **Goal**
 
-Implementar `UserService.list` e o endpoint `GET /api/users`, ADMIN-only, retornando apenas usuários da Organization do JWT com os filtros `active` e `roleId` e paginação.
+Implement `UserService.list` and the `GET /api/users` endpoint, ADMIN-only, returning only users from the JWT Organization with `active` and `roleId` filters and pagination.
 
 **Acceptance Criteria**
 
-- [ ] `UserService.list` recebe a Organization do `@CurrentUser()` da Fase 4 e nunca de query param ou body
-- [ ] `GET /api/users` é decorado com `@Roles('ADMIN')`, conforme a matriz de permissões da §6 do PRD
-- [ ] Resposta usa o `PaginatedResponseDto` da Fase 2 com `items`, `total`, `page` e `limit`
-- [ ] Filtros `active` e `roleId` funcionam isolados e combinados
-- [ ] Usuários soft-deleted não aparecem na listagem
-- [ ] Filtro sem resultado retorna 200 com lista vazia, nunca 404
-- [ ] Teste e2e cobre listagem sem filtro, com `active=false`, com `roleId`, com filtro sem resultado e com `limit` acima do máximo
-- [ ] Teste unitário de `UserService.list` com o repository mockado pela interface
-- [ ] `npm run lint` e `npm test` passam sem erro, falha ou teste pulado
+- [ ] `UserService.list` receives Organization from Phase 4 `@CurrentUser()` and never from query param or body
+- [ ] `GET /api/users` is decorated with `@Roles('ADMIN')`, per §6 permission matrix
+- [ ] Response uses Phase 2 `PaginatedResponseDto` with `items`, `total`, `page`, and `limit`
+- [ ] Filters `active` and `roleId` work in isolation and combined
+- [ ] Soft-deleted users do not appear in listing
+- [ ] Filter with no result returns 200 with empty list, never 404
+- [ ] E2e test covers listing without filter, with `active=false`, with `roleId`, with filter yielding no result, and with `limit` above maximum
+- [ ] Unit test of `UserService.list` with repository mocked via interface
+- [ ] `npm run lint` and `npm test` pass with no error, failure, or skipped test
 
 ---
 
-### P10M06: Implementar `GET /api/users/:id`
+### P10M06: Implement `GET /api/users/:id`
 
 **Status:** 🚧 TODO
 **ID:** P10M06
 
 **Goal**
 
-Implementar `UserService.getById` e o endpoint `GET /api/users/:id`, ADMIN-only, restrito à Organization do JWT e sem vazar a existência de usuários de outras Organizations.
+Implement `UserService.getById` and the `GET /api/users/:id` endpoint, ADMIN-only, restricted to JWT Organization without leaking existence of users from other Organizations.
 
 **Acceptance Criteria**
 
-- [ ] `id` é validado como UUID no path; valor inválido retorna 400
-- [ ] `GET /api/users/:id` é decorado com `@Roles('ADMIN')`
-- [ ] Usuário de outra Organization retorna 404 com `DomainError` tipado de não encontrado — nunca 403 nem mensagem que confirme a existência do registro
-- [ ] Usuário soft-deleted retorna 404
-- [ ] Resposta é serializada pelo `UserResponseDto`, sem `password_hash`
-- [ ] Teste e2e cobre detalhe encontrado, UUID inválido, id inexistente, id de outra Organization e usuário soft-deleted
-- [ ] Teste unitário de `UserService.getById` com o repository mockado
-- [ ] `npm run lint` e `npm test` passam sem erro, falha ou teste pulado
+- [ ] `id` is validated as UUID in path; invalid value returns 400
+- [ ] `GET /api/users/:id` is decorated with `@Roles('ADMIN')`
+- [ ] User from another Organization returns 404 with typed not-found `DomainError` — never 403 nor message confirming record existence
+- [ ] Soft-deleted user returns 404
+- [ ] Response is serialized by `UserResponseDto`, without `password_hash`
+- [ ] E2e test covers found detail, invalid UUID, nonexistent id, id from another Organization, and soft-deleted user
+- [ ] Unit test of `UserService.getById` with repository mocked
+- [ ] `npm run lint` and `npm test` pass with no error, failure, or skipped test
 
 ---

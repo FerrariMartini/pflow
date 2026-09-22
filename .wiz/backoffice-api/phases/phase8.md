@@ -1,4 +1,4 @@
-# Phase 8: Consultas de Depósitos e Saques com Filtros, Paginação e Masking por Perfil
+# Phase 8: Deposit and Withdrawal Queries with Filters, Pagination, and Profile-Based Masking
 
 **Duration**: ~3 days (24 milestones @ 1h each)
 **Dependencies**: Phase 7
@@ -6,153 +6,153 @@
 
 ## Goal
 
-Entregar as telas operacionais de consulta sobre o read model projetado na Fase 7 — a primeira entrega de valor direto para Operações, Financeiro, Compliance e Atendimento.
+Deliver operational query screens over the read model projected in Phase 7 — the first direct value delivery for Operations, Finance, Compliance, and Support.
 
-Entregas principais:
-- `GET /api/deposits` e `GET /api/deposits/:id` (`src/deposits/`).
-- `GET /api/withdrawals` e `GET /api/withdrawals/:id` (`src/withdrawals/`).
-- Filtros comuns: `tenant_id`, `status`, `provider_id`, `date_from`, `date_to`, `document_number`, `merchant_transaction_id`, `payer_id`.
-- Paginação `page` + `limit` (default 20, max 100) usando o `PaginatedResponseDto` da Fase 2.
-- Escopo por `user.tenant_ids` aplicado em toda query, com `SET LOCAL app.current_tenant_id` (RLS) por requisição.
-- Regra específica de `SUPPORT`: leitura básica, sem `document_number` completo.
-- Índices de consulta no `backoffice-db` (período, status, tenant, provider) dimensionados para o alvo de p95 < 500ms.
+Main deliverables:
+- `GET /api/deposits` and `GET /api/deposits/:id` (`src/deposits/`).
+- `GET /api/withdrawals` and `GET /api/withdrawals/:id` (`src/withdrawals/`).
+- Common filters: `tenant_id`, `status`, `provider_id`, `date_from`, `date_to`, `document_number`, `merchant_transaction_id`, `payer_id`.
+- Pagination `page` + `limit` (default 20, max 100) using Phase 2 `PaginatedResponseDto`.
+- Scoping by `user.tenant_ids` on every query, with `SET LOCAL app.current_tenant_id` (RLS) per request.
+- `SUPPORT`-specific rule: basic read, without full `document_number`.
+- Query indexes on `backoffice-db` (period, status, tenant, provider) sized for p95 < 500ms target.
 
 ## Phase Acceptance Criteria
 
-- Os quatro endpoints estão acessíveis a todos os 5 perfis conforme a matriz (§6) e negam usuário não autenticado — cobertos por e2e.
-- `SUPPORT` recebe `document_number` mascarado enquanto ADMIN/OPERATIONS/FINANCE/COMPLIANCE recebem o valor completo — teste parametrizado por perfil, tanto na listagem quanto no detalhe.
-- Consulta com `tenant_id` fora de `user.tenant_ids` retorna 403; consulta sem `tenant_id` retorna apenas os tenants autorizados — dois testes de integração (P0 — multi-tenant isolation).
-- Todos os oito filtros funcionam isolados e combinados, incluindo os casos de borda: intervalo de datas invertido, `limit` acima de 100, `page` inexistente e filtro sem resultado — cada um com teste.
-- Consulta paginada sobre massa de teste representativa responde em p95 < 500ms com os índices criados, medido por benchmark de hot spot registrado no repositório.
-- Nenhum campo sensível aparece em log de consulta; o `MaskingInterceptor` cobre também os campos do read model.
-- Cobertura ≥ 90% em `DepositService`, `WithdrawalService` e respectivos repositories; ≥ 85% nos controllers.
-- `scripts/pre-commit.sh` verde e `docs/contract/contract.md` atualizado com os quatro endpoints no mesmo PR.
+- All four endpoints are accessible to all 5 profiles per matrix (§6) and deny unauthenticated user — covered by e2e.
+- `SUPPORT` receives masked `document_number` while ADMIN/OPERATIONS/FINANCE/COMPLIANCE receive full value — parameterized test by profile, on both listing and detail.
+- Query with `tenant_id` outside `user.tenant_ids` returns 403; query without `tenant_id` returns only authorized tenants — two integration tests (P0 — multi-tenant isolation).
+- All eight filters work in isolation and combined, including edge cases: inverted date range, `limit` above 100, nonexistent `page`, and filter with no result — each with a test.
+- Paginated query over representative test data responds at p95 < 500ms with created indexes, measured by hot-spot benchmark recorded in the repository.
+- No sensitive field appears in query log; `MaskingInterceptor` also covers read model fields.
+- Coverage ≥ 90% in `DepositService`, `WithdrawalService`, and respective repositories; ≥ 85% on controllers.
+- `scripts/pre-commit.sh` green and `docs/contract/contract.md` updated with all four endpoints in the same PR.
 
 ## Milestones
 
 <!-- Milestones appended by /wiz-milestones -->
-### P08M01: Criar o DTO base de consulta transacional com os oito filtros
+### P08M01: Create base transactional query DTO with eight filters
 
 **Status:** 🚧 TODO
 **ID:** P08M01
 
 **Goal**
 
-Criar `TransactionQueryDto` compartilhado, estendendo o `PaginationDto` da Fase 2, declarando os oito filtros comuns da §8 do PRD com validação `class-validator`.
+Create shared `TransactionQueryDto`, extending Phase 2 `PaginationDto`, declaring the eight common §8 PRD filters with `class-validator` validation.
 
 **Acceptance Criteria**
 
-- [ ] `TransactionQueryDto` declara `tenant_id`, `status`, `provider_id`, `date_from`, `date_to`, `document_number`, `merchant_transaction_id` e `payer_id`, todos opcionais
-- [ ] `tenant_id` e `provider_id` validados como UUID; `date_from` e `date_to` como data ISO 8601 com `@Type(() => Date)`
-- [ ] `status` validado contra o enum de status do read model, rejeitando valor fora da lista com 400
-- [ ] Herda `page` (default 1, mínimo 1) e `limit` (default 20, máximo 100) do `PaginationDto` da Fase 2, sem redeclarar as regras
-- [ ] `forbidNonWhitelisted` do `ValidationPipe` global rejeita query param não declarado com 400
-- [ ] Testes unitários cobrem, para cada filtro, um valor válido e um valor rejeitado
-- [ ] `npm run lint` e `npm run test` verdes
+- [ ] `TransactionQueryDto` declares `tenant_id`, `status`, `provider_id`, `date_from`, `date_to`, `document_number`, `merchant_transaction_id`, and `payer_id`, all optional
+- [ ] `tenant_id` and `provider_id` validated as UUID; `date_from` and `date_to` as ISO 8601 date with `@Type(() => Date)`
+- [ ] `status` validated against read model status enum, rejecting out-of-list value with 400
+- [ ] Inherits `page` (default 1, minimum 1) and `limit` (default 20, maximum 100) from Phase 2 `PaginationDto`, without redeclaring rules
+- [ ] Global `ValidationPipe` `forbidNonWhitelisted` rejects undeclared query param with 400
+- [ ] Unit tests cover, for each filter, one valid value and one rejected value
+- [ ] `npm run lint` and `npm run test` green
 
 ---
 
-### P08M02: Validar intervalo de datas e normalizar filtros textuais
+### P08M02: Validate date range and normalize text filters
 
 **Status:** 🚧 TODO
 **ID:** P08M02
 
 **Goal**
 
-Adicionar validador customizado que rejeita intervalo de datas invertido e normalizar os filtros textuais antes de chegarem ao repositório, evitando divergência de formato entre cliente e read model.
+Add custom validator rejecting inverted date range and normalize text filters before they reach the repository, avoiding format divergence between client and read model.
 
 **Acceptance Criteria**
 
-- [ ] Validador customizado `@IsValidDateRange()` no `TransactionQueryDto` rejeita `date_from` posterior a `date_to` com 400 e `code` estável do `docs/technical/guidelines/error-handling.md`
-- [ ] `document_number` é normalizado para apenas dígitos (remove pontuação de CPF) via `@Transform`, antes da validação de tamanho
-- [ ] `merchant_transaction_id` e `payer_id` sofrem `trim` e rejeitam string vazia
-- [ ] `date_from` sem `date_to` (e vice-versa) é aceito e tratado como intervalo aberto
-- [ ] Testes unitários cobrem: intervalo invertido, intervalo igual (`date_from == date_to`), intervalo aberto em cada ponta, CPF com e sem pontuação
-- [ ] Nenhum valor de `document_number` aparece em log durante a validação — verificado por teste
-- [ ] `npm run lint` e `npm run test` verdes
+- [ ] Custom validator `@IsValidDateRange()` on `TransactionQueryDto` rejects `date_from` after `date_to` with 400 and stable `code` from `docs/technical/guidelines/error-handling.md`
+- [ ] `document_number` is normalized to digits only (removes CPF punctuation) via `@Transform`, before length validation
+- [ ] `merchant_transaction_id` and `payer_id` are trimmed and reject empty string
+- [ ] `date_from` without `date_to` (and vice versa) is accepted and treated as open interval
+- [ ] Unit tests cover: inverted range, equal range (`date_from == date_to`), open interval on each end, CPF with and without punctuation
+- [ ] No `document_number` value appears in log during validation — verified by test
+- [ ] `npm run lint` and `npm run test` green
 
 ---
 
-### P08M03: Implementar o query builder compartilhado do read model
+### P08M03: Implement shared read model query builder
 
 **Status:** 🚧 TODO
 **ID:** P08M03
 
 **Goal**
 
-Criar `TransactionQueryBuilder` compartilhado que traduz um `TransactionQueryDto` em cláusulas `WHERE` parametrizadas do TypeORM, reutilizado pelos repositórios de depósitos e saques.
+Create shared `TransactionQueryBuilder` that translates a `TransactionQueryDto` into parameterized TypeORM `WHERE` clauses, reused by deposit and withdrawal repositories.
 
 **Acceptance Criteria**
 
-- [ ] `TransactionQueryBuilder` aplica cada um dos oito filtros como predicado parametrizado, ignorando os filtros ausentes
-- [ ] `date_from`/`date_to` são aplicados sobre a coluna de período do read model como intervalo fechado
-- [ ] Toda query recebe obrigatoriamente `tenant_id IN (:...tenantIds)` a partir do escopo do usuário, mesmo quando nenhum filtro é informado
-- [ ] Nenhum valor de filtro é concatenado em string SQL — apenas binding de parâmetro (prevenção de SQL injection, P2)
-- [ ] Ordenação default estável por período decrescente e desempate por `id`, garantindo paginação sem repetição de linha entre páginas
-- [ ] Testes unitários verificam o SQL gerado e os parâmetros para: nenhum filtro, cada filtro isolado e todos os oito combinados
-- [ ] `npm run lint` e `npm run test` verdes
+- [ ] `TransactionQueryBuilder` applies each of the eight filters as parameterized predicate, ignoring absent filters
+- [ ] `date_from`/`date_to` are applied on read model period column as closed interval
+- [ ] Every query mandatorily receives `tenant_id IN (:...tenantIds)` from user scope, even when no filter is provided
+- [ ] No filter value is concatenated into SQL string — parameter binding only (SQL injection prevention, P2)
+- [ ] Default stable ordering by descending period with `id` tie-break, ensuring pagination without duplicate rows across pages
+- [ ] Unit tests verify generated SQL and parameters for: no filter, each filter in isolation, and all eight combined
+- [ ] `npm run lint` and `npm run test` green
 
 ---
 
-### P08M04: Aplicar SET LOCAL app.current_tenant_id por requisição
+### P08M04: Apply SET LOCAL app.current_tenant_id per request
 
 **Status:** 🚧 TODO
 **ID:** P08M04
 
 **Goal**
 
-Garantir que toda consulta ao read model rode dentro de uma transação com `SET LOCAL app.current_tenant_id` definido a partir do contexto autenticado, ativando a RLS criada na Fase 1.
+Ensure every read model query runs inside a transaction with `SET LOCAL app.current_tenant_id` set from authenticated context, activating RLS created in Phase 1.
 
 **Acceptance Criteria**
 
-- [ ] Helper/`QueryRunner` dedicado abre transação, executa `SET LOCAL app.current_tenant_id` e só então roda a query do read model
-- [ ] O valor vem do `AuthContextService` da Fase 4; requisição sem contexto autenticado não chega a executar query
-- [ ] O `SET LOCAL` é liberado ao fim da transação, sem vazar entre requisições subsequentes na mesma conexão do pool — coberto por teste de integração com duas requisições sequenciais de tenants distintos
-- [ ] Teste de integração prova que uma query executada sem o `SET LOCAL` não retorna linhas (RLS ativa, P0 — multi-tenant isolation)
-- [ ] Erro ao aplicar o `SET LOCAL` resulta em falha técnica com 500 genérico, sem vazar detalhe de conexão
-- [ ] Cobertura ≥ 90% no helper
-- [ ] `npm run lint` e `npm run test` verdes
+- [ ] Dedicated helper/`QueryRunner` opens transaction, executes `SET LOCAL app.current_tenant_id`, then runs read model query
+- [ ] Value comes from Phase 4 `AuthContextService`; unauthenticated request never reaches query execution
+- [ ] `SET LOCAL` is released at transaction end, without leaking between subsequent requests on the same pool connection — covered by integration test with two sequential requests from distinct tenants
+- [ ] Integration test proves query executed without `SET LOCAL` returns no rows (RLS active, P0 — multi-tenant isolation)
+- [ ] Error applying `SET LOCAL` results in technical failure with generic 500, without leaking connection detail
+- [ ] Coverage ≥ 90% on helper
+- [ ] `npm run lint` and `npm run test` green
 
 ---
 
-### P08M05: Resolver o escopo de tenant da consulta a partir de user.tenant_ids
+### P08M05: Resolve query tenant scope from user.tenant_ids
 
 **Status:** 🚧 TODO
 **ID:** P08M05
 
 **Goal**
 
-Implementar a resolução do escopo de tenant da consulta: filtro `tenant_id` fora de `user.tenant_ids` retorna 403 e ausência de `tenant_id` restringe o resultado aos tenants autorizados.
+Implement query tenant scope resolution: `tenant_id` filter outside `user.tenant_ids` returns 403 and missing `tenant_id` restricts result to authorized tenants.
 
 **Acceptance Criteria**
 
-- [ ] `TransactionScopeResolver` recebe o `tenant_id` opcional do DTO e o `tenant_ids` do `@CurrentUser()` e devolve a lista efetiva de tenants da query
-- [ ] `tenant_id` informado e presente em `user.tenant_ids` resolve para lista de um elemento
-- [ ] `tenant_id` informado e ausente de `user.tenant_ids` lança `DomainError` traduzido para 403, sem revelar se o tenant existe
-- [ ] `tenant_id` ausente resolve para todos os tenants de `user.tenant_ids`
-- [ ] `user.tenant_ids` vazio nunca resulta em consulta sem restrição — o caso é tratado como erro de contexto, não como acesso irrestrito
-- [ ] Testes unitários cobrem os quatro cenários acima; cobertura ≥ 90% no resolver
-- [ ] `npm run lint` e `npm run test` verdes
+- [ ] `TransactionScopeResolver` receives optional DTO `tenant_id` and `@CurrentUser()` `tenant_ids` and returns effective tenant list for the query
+- [ ] Provided `tenant_id` present in `user.tenant_ids` resolves to single-element list
+- [ ] Provided `tenant_id` absent from `user.tenant_ids` throws `DomainError` translated to 403, without revealing whether tenant exists
+- [ ] Missing `tenant_id` resolves to all tenants in `user.tenant_ids`
+- [ ] Empty `user.tenant_ids` never results in unrestricted query — case is treated as context error, not unrestricted access
+- [ ] Unit tests cover all four scenarios above; coverage ≥ 90% on resolver
+- [ ] `npm run lint` and `npm run test` green
 
 ---
 
-### P08M06: Criar a base do módulo de depósitos com entidade, interfaces e DTOs de resposta
+### P08M06: Create deposits module base with entity, interfaces, and response DTOs
 
 **Status:** 🚧 TODO
 **ID:** P08M06
 
 **Goal**
 
-Montar o esqueleto de `src/deposits/` seguindo o padrão Hexagonal Light da §9 do PRD: entidade `CashinTransaction`, interfaces `IDepositRepository`/`IDepositService` e DTOs de resposta de listagem e detalhe.
+Set up `src/deposits/` skeleton following PRD §9 Hexagonal Light pattern: `CashinTransaction` entity, `IDepositRepository`/`IDepositService` interfaces, and listing/detail response DTOs.
 
 **Acceptance Criteria**
 
-- [ ] `CashinTransaction` mapeia a tabela `cashin_transactions` do `backoffice-db` criada na Fase 1, sem redefinir schema
-- [ ] `IDepositRepository` e `IDepositService` declaram as operações de listagem paginada e busca por id, em `src/deposits/interfaces/`
-- [ ] `DepositsQueryDto` estende `TransactionQueryDto` sem adicionar filtro fora dos oito comuns
-- [ ] `DepositListItemDto` e `DepositDetailDto` declaram explicitamente os campos expostos — nenhum campo da entidade é serializado por default
-- [ ] Ambos os DTOs de resposta são documentados com decorators Swagger
-- [ ] Mapper entidade → DTO coberto por teste unitário, incluindo campo nulo opcional
-- [ ] `npm run lint`, `npm run build` e `npm run test` verdes
+- [ ] `CashinTransaction` maps `cashin_transactions` table in `backoffice-db` created in Phase 1, without redefining schema
+- [ ] `IDepositRepository` and `IDepositService` declare paginated listing and find-by-id operations in `src/deposits/interfaces/`
+- [ ] `DepositsQueryDto` extends `TransactionQueryDto` without adding filters outside the eight common ones
+- [ ] `DepositListItemDto` and `DepositDetailDto` explicitly declare exposed fields — no entity field serialized by default
+- [ ] Both response DTOs documented with Swagger decorators
+- [ ] Entity → DTO mapper covered by unit test, including optional null field
+- [ ] `npm run lint`, `npm run build`, and `npm run test` green
 
 ---

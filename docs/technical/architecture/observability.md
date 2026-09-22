@@ -1,35 +1,35 @@
-# Arquitetura — Observabilidade
+# Architecture — Observability
 
-## Princípio
+## Principle
 
-Numa arquitetura orientada a eventos (ver `overview.md`), uma transação atravessa vários serviços de forma assíncrona — sem observabilidade de ponta a ponta, um incidente vira uma investigação manual em múltiplos bancos de dados. Observabilidade não é um add-on aqui, é pré-requisito da arquitetura escolhida (ADR-0001).
+In an event-driven architecture (see `overview.md`), a transaction crosses multiple services asynchronously — without end-to-end observability, an incident becomes a manual investigation across multiple databases. Observability is not an add-on here, it is a prerequisite of the chosen architecture (ADR-0001).
 
-## Três pilares
+## Three pillars
 
-### Logs estruturados
-- Todo log é JSON estruturado, nunca string livre, com campos fixos: `timestamp`, `level`, `service`, `correlationId`, `transactionId` (quando aplicável), `message`.
-- `correlationId` é gerado no `payflow-gateway` na entrada da requisição e propagado em todo header/evento subsequente — é a chave de busca principal em qualquer investigação.
-- Ver `docs/technical/guidelines/logging.md` para convenções de nível de log e o que nunca deve ser logado.
+### Structured logs
+- Every log is structured JSON, never free-form string, with fixed fields: `timestamp`, `level`, `service`, `correlationId`, `transactionId` (when applicable), `message`.
+- `correlationId` is generated in `payflow-gateway` at request entry and propagated in every subsequent header/event — it is the primary search key in any investigation.
+- See `docs/technical/guidelines/logging.md` for log level conventions and what must never be logged.
 
-### Métricas
-- RED (Rate, Errors, Duration) por endpoint em todo serviço síncrono (`gateway`, `backoffice-api`).
-- Métricas de consumidor (lag de partição, taxa de processamento, taxa de erro) em todo serviço assíncrono (`cashin`, `cashout`, `webhook`, `outbox-relay`, `audit`).
-- Métrica de negócio dedicada: taxa de transações não conciliadas (`payflow-backoffice-api`) e idade da mais antiga pendência de conciliação — é o principal indicador de saúde operacional do hub, não só técnico.
+### Metrics
+- RED (Rate, Errors, Duration) per endpoint on every synchronous service (`gateway`, `backoffice-api`).
+- Consumer metrics (partition lag, processing rate, error rate) on every asynchronous service (`cashin`, `cashout`, `webhook`, `outbox-relay`, `audit`).
+- Dedicated business metric: rate of unreconciled transactions (`payflow-backoffice-api`) and age of the oldest pending reconciliation — it is the hub's primary operational health indicator, not only technical.
 
-### Tracing distribuído
-- Cada requisição síncrona e cada evento assíncrono carregam contexto de trace (`traceId`/`spanId`) propagado via header (síncrono) ou payload do evento (assíncrono), permitindo reconstruir a jornada completa de uma transação — do `POST /v1/cash-in` até a notificação de webhook — numa única visualização.
+### Distributed tracing
+- Every synchronous request and every asynchronous event carries trace context (`traceId`/`spanId`) propagated via header (synchronous) or event payload (asynchronous), enabling reconstruction of a transaction's full journey — from `POST /v1/cash-in` to webhook notification — in a single view.
 
-## SLOs de referência
+## Reference SLOs
 
-| Sinal | Alvo |
+| Signal | Target |
 |---|---|
-| Latência p95 de confirmação de cash-in | < 200ms (ver PRD, seção 6) |
-| Lag máximo de consumidor em `outbox-relay` | < 10s sob carga normal |
-| Tempo entre evento gerado e entrega de webhook (p95) | < 30s |
-| Divergência não detectada entre hub e provedor | 0 (garantida por conciliação periódica automatizada + manual) |
+| p95 latency for cash-in confirmation | < 200ms (see PRD, section 6) |
+| Maximum consumer lag in `outbox-relay` | < 10s under normal load |
+| Time between event generated and webhook delivery (p95) | < 30s |
+| Undetected discrepancy between hub and provider | 0 (guaranteed by automated + manual periodic reconciliation) |
 
-## Estado da instrumentação
+## Instrumentation state
 
-Este documento define o desenho: quais sinais são coletados, com que campos e contra quais SLOs. A instrumentação (OpenTelemetry, coletor, dashboards, alertas) depende da infraestrutura descrita em `docs/technical/infrastructure/aws-architecture.md` e é rastreada como trabalho próprio, planejado via o PayFlow SDLC Kit (`/wiz-prd`) quando priorizada.
+This document defines the design: which signals are collected, with which fields, and against which SLOs. Instrumentation (OpenTelemetry, collector, dashboards, alerts) depends on infrastructure described in `docs/technical/infrastructure/aws-architecture.md` and is tracked as its own work, planned via the PayFlow SDLC Kit (`/wiz-prd`) when prioritized.
 
-A base já está no código: `correlationId` e os campos estruturados de log definidos em `docs/technical/guidelines/logging.md` estão presentes em `payflow-backoffice-api`, que é o ponto de partida da propagação ponta a ponta descrita acima.
+The foundation is already in code: `correlationId` and structured log fields defined in `docs/technical/guidelines/logging.md` are present in `payflow-backoffice-api`, which is the starting point for the end-to-end propagation described above.

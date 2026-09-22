@@ -134,7 +134,7 @@ You are not re-reviewing the code. Trust the evidence already captured in the re
 ## Example Analysis
 
 ```markdown
-# Phase 2 Retro: Transações e Conciliação
+# Phase 2 Retro: Transactions and Reconciliation
 
 **PRD**: backoffice-api
 **Date**: 2026-08-24T12:00:00Z

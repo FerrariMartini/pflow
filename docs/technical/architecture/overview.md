@@ -1,80 +1,80 @@
-# Arquitetura — Visão Geral
+# Architecture — Overview
 
-## Estilo arquitetural
+## Architectural style
 
-Microsserviços orientados a eventos. A borda com o integrador é sempre REST (HTTPS + HMAC), mas **o protocolo interno entre gateway e serviço de domínio muda conforme a natureza do fluxo**: cash-in é síncrono (gRPC), cash-out é assíncrono (comando via Kafka). Ver seção "Por que cash-in é síncrono e cash-out é assíncrono" abaixo. Em ambos os casos, a propagação de estado para o resto do hub usa o **padrão outbox transacional**, garantindo que nenhum evento seja perdido mesmo em caso de falha entre a escrita no banco e a publicação no broker.
+Event-driven microservices. The integrator boundary is always REST (HTTPS + HMAC), but **the internal protocol between gateway and domain service changes according to flow nature**: cash-in is synchronous (gRPC), cash-out is asynchronous (command via Kafka). See section "Why cash-in is synchronous and cash-out is asynchronous" below. In both cases, state propagation to the rest of the hub uses the **transactional outbox pattern**, ensuring no event is lost even if failure occurs between database write and broker publication.
 
 ```
-Integrador
+Integrator
    │ REST (HTTPS + HMAC)
    ▼
 ┌───────────────────┐
-│  payflow-gateway   │  auth, rate limit, roteamento
+│  payflow-gateway   │  auth, rate limit, routing
 └──┬─────────────┬───┘
-   │ gRPC          │ publica payflow.cashout.command.v1
-   │ (síncrono)    │ (assíncrono — gateway responde 202 Accepted)
+   │ gRPC          │ publishes payflow.cashout.command.v1
+   │ (sync)        │ (async — gateway returns 202 Accepted)
    ▼               ▼
 ┌──────────┐   ┌─────────────────────────┐
 │ cash-in  │   │ payflow.cashout.command │  Kafka
 └────┬─────┘   └───────────┬─────────────┘
      │                     ▼
      │               ┌───────────┐
-     │               │ cash-out  │  consome o comando
+     │               │ cash-out  │  consumes command
      │               └─────┬─────┘
      │ outbox               │ outbox
      ▼                      ▼
 ┌───────────────────────────────┐
-│      payflow-outbox-relay      │  lê outbox, publica em Kafka, marca como enviado
+│      payflow-outbox-relay      │  reads outbox, publishes to Kafka, marks sent
 └────────────────┬────────────────┘
-                 │ eventos de domínio
+                 │ domain events
    ┌─────────────┼──────────────┬───────────────┐
    ▼             ▼               ▼               ▼
 ┌────────┐   ┌───────────┐ ┌────────────┐ ┌──────────────┐
-│webhook │   │  audit    │ │ backoffice │ │ (futuros      │
-│service │   │  service  │ │    api     │ │  consumidores)│
+│webhook │   │  audit    │ │ backoffice │ │ (future      │
+│service │   │  service  │ │    api     │ │  consumers)  │
 └────────┘   └───────────┘ └────────────┘ └──────────────┘
 ```
 
-## Por que cash-in é síncrono e cash-out é assíncrono
+## Why cash-in is synchronous and cash-out is asynchronous
 
-Os dois fluxos parecem simétricos (ambos criam uma transação e a levam a um provedor de liquidação), mas a natureza da resposta que o integrador precisa é diferente — e isso guia o protocolo interno:
+The two flows look symmetric (both create a transaction and take it to a settlement provider), but the nature of the response the integrator needs is different — and that guides the internal protocol:
 
-- **Cash-in (gRPC, síncrono)**: o integrador precisa de um dado de volta na resposta (ex: referência de cobrança a ser exibida ao usuário final) para poder prosseguir. Não há como responder de forma útil sem esperar o resultado da chamada ao provedor — então o gateway chama `payflow-cashin-service` via **gRPC** e só responde ao integrador depois que o serviço confirma a criação da cobrança.
-- **Cash-out (comando Kafka, assíncrono)**: o integrador só precisa saber que a ordem foi aceita, não o resultado imediato da liquidação. Desacoplar a aceitação do processamento evita bloquear a resposta HTTP na latência do provedor e, mais importante, **reduz o risco de double-execution**: se o gateway chamasse o provedor de forma síncrona e a conexão caísse depois do provedor confirmar mas antes da resposta chegar, um retry do integrador poderia gerar um segundo pagamento. Como comando assíncrono com `Idempotency-Key`, um retry do integrador é deduplicado antes mesmo de chegar ao `payflow-cashout-service`. O gateway responde `202 Accepted` + `transactionId`; o status final é consultado depois (`GET /v1/cash-out/:id`, ou de forma unificada via `payflow-backoffice-api`).
+- **Cash-in (gRPC, synchronous)**: the integrator needs data back in the response (e.g., collection reference to display to the end user) to proceed. There is no useful way to respond without waiting for the provider call result — so the gateway calls `payflow-cashin-service` via **gRPC** and only responds to the integrator after the service confirms collection creation.
+- **Cash-out (Kafka command, asynchronous)**: the integrator only needs to know the order was accepted, not the immediate settlement result. Decoupling acceptance from processing avoids blocking the HTTP response on provider latency and, more importantly, **reduces double-execution risk**: if the gateway called the provider synchronously and the connection dropped after the provider confirmed but before the response arrived, an integrator retry could generate a second payment. As an asynchronous command with `Idempotency-Key`, an integrator retry is deduplicated before even reaching `payflow-cashout-service`. The gateway responds `202 Accepted` + `transactionId`; final status is queried later (`GET /v1/cash-out/:id`, or uniformly via `payflow-backoffice-api`).
 
-Essa assimetria é deliberada, não uma inconsistência entre os dois serviços — ver `docs/contract/contract.md` para o detalhamento de protocolo por serviço.
+This asymmetry is deliberate, not an inconsistency between the two services — see `docs/contract/contract.md` for protocol detail per service.
 
-## Por que esse padrão (demais decisões)
+## Why this pattern (other decisions)
 
-- **Outbox em vez de publicar direto no broker dentro do handler**: evita o problema clássico de "escrevi no banco mas caí antes de publicar o evento" (ou vice-versa). A escrita da transação e a escrita do evento pendente acontecem na mesma transação de banco; um processo separado (`outbox-relay`) garante a publicação com at-least-once delivery.
-- **Gateway como única porta de entrada**: centraliza autenticação e rate limiting, evitando que cada serviço de domínio reimplemente essa lógica.
-- **Backoffice como consumidor, não como dono do dado transacional**: o backoffice-api mantém um *read model* próprio, construído a partir dos eventos de domínio, otimizado para consulta operacional (busca, filtros, paginação) — sem acoplar o time de operação ao schema interno do cash-in/cash-out.
+- **Outbox instead of publishing directly to the broker inside the handler**: avoids the classic problem of "wrote to the database but crashed before publishing the event" (or vice versa). Transaction write and pending event write happen in the same database transaction; a separate process (`outbox-relay`) ensures publication with at-least-once delivery.
+- **Gateway as the only entry point**: centralizes authentication and rate limiting, avoiding each domain service reimplementing that logic.
+- **Backoffice as consumer, not owner of transactional data**: backoffice-api maintains its own *read model*, built from domain events, optimized for operational lookup (search, filters, pagination) — without coupling the operations team to cash-in/cash-out internal schema.
 
-## Consistência e idempotência
+## Consistency and idempotency
 
-- Toda chamada de entrada (`POST /cash-in` via gRPC, `POST /cash-out` via comando Kafka) exige um `Idempotency-Key`. Requisições repetidas com a mesma chave retornam o resultado da primeira execução, sem reprocessar — no caso do cash-out, a deduplicação acontece antes do comando ser efetivamente processado, não depois.
-- Cada transação tem uma máquina de estados explícita (`created → processing → confirmed | failed | reversed`), e transições inválidas são rejeitadas na camada de domínio, não apenas validadas na API.
+- Every entry call (`POST /cash-in` via gRPC, `POST /cash-out` via Kafka command) requires an `Idempotency-Key`. Repeated requests with the same key return the first execution result without reprocessing — for cash-out, deduplication happens before the command is actually processed, not after.
+- Each transaction has an explicit state machine (`created → processing → confirmed | failed | reversed`), and invalid transitions are rejected in the domain layer, not merely validated at the API.
 
-## Observabilidade
+## Observability
 
-- Todo evento de domínio carrega um `correlation_id` (originado na requisição no gateway) propagado por todos os serviços downstream, permitindo rastrear uma transação de ponta a ponta nos logs.
-- `payflow-audit-service` persiste uma cópia imutável de todo evento relevante, servindo como fonte de verdade para investigações — independente do estado atual em cada serviço.
-- Ver `docs/technical/architecture/observability.md` para os três pilares (logs/métricas/tracing) e SLOs de referência.
+- Every domain event carries a `correlation_id` (originated in the gateway request) propagated through all downstream services, enabling end-to-end transaction tracing in logs.
+- `payflow-audit-service` persists an immutable copy of every relevant event, serving as the source of truth for investigations — independent of current state in each service.
+- See `docs/technical/architecture/observability.md` for the three pillars (logs/metrics/tracing) and reference SLOs.
 
-## Segurança
+## Security
 
-Ver `docs/technical/architecture/security.md` para modelo de ameaças, autenticação por camada (integrador→gateway, serviço→serviço, operador→backoffice) e proteção de dados. Idempotência (seção acima) é tratada ali também como controle de segurança, não só de confiabilidade.
+See `docs/technical/architecture/security.md` for threat model, authentication per layer (integrator→gateway, service→service, operator→backoffice) and data protection. Idempotency (section above) is also treated there as a security control, not only reliability.
 
-## Infraestrutura
+## Infrastructure
 
-Ver `docs/technical/infrastructure/aws-architecture.md` para o desenho de infraestrutura (ECS Fargate, MSK, RDS por serviço, isolamento de rede) e `docs/technical/infrastructure/sre-runbook.md` para severidades de incidente e runbooks dos alertas críticos.
+See `docs/technical/infrastructure/aws-architecture.md` for infrastructure design (ECS Fargate, MSK, RDS per service, network isolation) and `docs/technical/infrastructure/sre-runbook.md` for incident severities and critical alert runbooks.
 
-## Evolução v1 → v2
+## Evolution v1 → v2
 
-**v1 (escopo deste repositório)**: um único provedor de liquidação por trás do hub, isolamento multi-tenant só na camada de aplicação (ver `docs/technical/infrastructure/aws-architecture.md`), sem split de pagamento entre beneficiários (ver PRD, seção 5 — fora de escopo v1).
+**v1 (scope of this repository)**: a single settlement provider behind the hub, multi-tenant isolation only at the application layer (see `docs/technical/infrastructure/aws-architecture.md`), no payment split among beneficiaries (see PRD, section 5 — out of scope v1).
 
-**v2 (fora de escopo, mas já considerado no desenho)**: suporte a múltiplos provedores simultâneos com roteamento por custo/SLA — isso muda `payflow-cashin-service`/`payflow-cashout-service` de "integra com um provedor" para "escolhe entre provedores", o que é o motivo de já isolarmos o cliente do provedor atrás de uma interface própria desde a v1 (Dependency Inversion, ver `docs/technical/guidelines/dependency-injection.md`) — trocar/adicionar provedor não deve exigir reescrever a máquina de estados.
+**v2 (out of scope, but already considered in design)**: support for multiple simultaneous providers with routing by cost/SLA — this changes `payflow-cashin-service`/`payflow-cashout-service` from "integrates with one provider" to "chooses among providers", which is why we already isolate the provider client behind its own interface from v1 (Dependency Inversion, see `docs/technical/guidelines/dependency-injection.md`) — swapping/adding a provider should not require rewriting the state machine.
 
-## Detalhamento por serviço
+## Detail per service
 
-Ver `services/<nome-do-serviço>/README.md` para contrato de API, eventos publicados/consumidos e decisões específicas de cada serviço. A quebra em fases/milestones de cada serviço fica em `.wiz/<slug>/` a partir do momento em que ele é planejado via o PayFlow SDLC Kit (`/wiz-prd` → `/wiz-phases` → `/wiz-milestones`) — hoje só `payflow-backoffice-api` (`.wiz/backoffice-api/`) passou por esse processo.
+See `services/<service-name>/README.md` for API contract, published/consumed events, and service-specific decisions. Phase/milestone breakdown for each service lives in `.wiz/<slug>/` from the moment it is planned via the PayFlow SDLC Kit (`/wiz-prd` → `/wiz-phases` → `/wiz-milestones`) — today only `payflow-backoffice-api` (`.wiz/backoffice-api/`) has gone through that process.

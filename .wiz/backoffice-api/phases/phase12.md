@@ -1,33 +1,33 @@
-# Phase 12: SSE em Tempo Real com Fanout via Redis Pub/Sub
+# Phase 12: Real-Time SSE with Fanout via Redis Pub/Sub
 
 **Duration**: ~3 days (24 milestones @ 1h each)
-**Dependencies**: Phase 7 (projeções emissoras), Phase 8 (read model consultável), Phase 9 (eventos de CB operacionais)
+**Dependencies**: Phase 7 (emitting projections), Phase 8 (queryable read model), Phase 9 (operational CB events)
 **Status**: 🚧 TODO
 
 ## Goal
 
-Substituir polling por streams SSE persistentes (`src/events/`), entregando atualização em tempo real das telas de transações e de circuit breaker com fanout correto em deploy multi-instância.
+Replace polling with persistent SSE streams (`src/events/`), delivering real-time screen updates for transactions and circuit breaker with correct fanout in multi-instance deployment.
 
-Entregas principais:
-- Conexão Valkey Pub/Sub dedicada (`REDIS_PUBSUB_URL`) com clientes ioredis separados para `PUBLISH` e `SUBSCRIBE`, canais `tx-events` e `cb-events`.
-- `EventsService` com `RxJS Subject` alimentado pela subscrição Redis; as projeções da Fase 7 passam a emitir após a escrita durável no `backoffice-db`.
-- `GET /api/events/transactions` (todos os perfis) e `GET /api/events/circuit-breaker` (ADMIN, OPERATIONS) com `@Sse`, autenticados pelo mesmo `JwtAuthGuard` via cookie HttpOnly.
-- Filtro de eventos por `user.tenant_ids` antes da entrega ao cliente.
-- Batching com `bufferTime(500ms)`; cada evento carrega `id` (`transaction_id` ou ULID) e `data` como array.
-- At-least-once: `Last-Event-ID` na reconexão dispara replay do `backoffice-db` dos eventos mais recentes que esse ID antes de retomar o stream ao vivo.
-- Encerramento limpo de conexão (cliente desconecta, shutdown da instância) sem vazamento de subscrição.
-- ADR registrando a escolha de SSE sobre WebSocket e do fanout via Redis Pub/Sub isolado.
+Main deliverables:
+- Dedicated Valkey Pub/Sub connection (`REDIS_PUBSUB_URL`) with separate ioredis clients for `PUBLISH` and `SUBSCRIBE`, channels `tx-events` and `cb-events`.
+- `EventsService` with `RxJS Subject` fed by Redis subscription; Phase 7 projections emit after durable write to `backoffice-db`.
+- `GET /api/events/transactions` (all profiles) and `GET /api/events/circuit-breaker` (ADMIN, OPERATIONS) with `@Sse`, authenticated by the same `JwtAuthGuard` via HttpOnly cookie.
+- Event filter by `user.tenant_ids` before delivery to client.
+- Batching with `bufferTime(500ms)`; each event carries `id` (`transaction_id` or ULID) and `data` as an array.
+- At-least-once: `Last-Event-ID` on reconnect triggers replay from `backoffice-db` of events newer than that ID before resuming the live stream.
+- Clean connection teardown (client disconnect, instance shutdown) without subscription leak.
+- ADR recording the choice of SSE over WebSocket and fanout via isolated Redis Pub/Sub.
 
 ## Phase Acceptance Criteria
 
-- Evento consumido pela instância A é entregue a um cliente SSE conectado na instância B — teste de integração com duas instâncias da aplicação contra o Valkey do compose (o cenário que motiva o Pub/Sub).
-- Operador nunca recebe evento de tenant fora de `user.tenant_ids` — teste com dois usuários de escopos diferentes na mesma conexão de Pub/Sub (P0).
-- `bufferTime(500ms)` agrupa rajadas: 50 eventos em 1s chegam ao cliente em no máximo 2 mensagens, cada uma com `data` em array — verificado por teste.
-- Reconexão com `Last-Event-ID` replaya do banco exatamente os eventos posteriores a esse ID, sem duplicar nem pular, e sem replay quando o header está ausente — três casos de teste.
-- `GET /api/events/circuit-breaker` nega FINANCE, COMPLIANCE e SUPPORT; ambos os streams negam requisição sem JWT válido.
-- Desconexão do cliente e shutdown da instância liberam a subscrição e não deixam handler pendurado — teste verifica ausência de vazamento após N conexões abertas e fechadas.
-- Latência do evento Kafka até o cliente conectado é < 2s no benchmark de hot spot registrado (P4 do §14).
-- Cobertura ≥ 90% em `EventsService` e `RedisPubSubService`; `scripts/pre-commit.sh` verde, ADR criado em `docs/decisions/` e `docs/contract/contract.md` atualizado com o contrato SSE.
+- Event consumed on instance A is delivered to an SSE client connected on instance B — integration test with two app instances against compose Valkey (the scenario that motivates Pub/Sub).
+- Operator never receives an event from a tenant outside `user.tenant_ids` — test with two users of different scopes on the same Pub/Sub connection (P0).
+- `bufferTime(500ms)` groups bursts: 50 events in 1s reach the client in at most 2 messages, each with `data` as array — verified by test.
+- Reconnect with `Last-Event-ID` replays from the database exactly the events after that ID, without duplicate or skip, and no replay when the header is absent — three test cases.
+- `GET /api/events/circuit-breaker` denies FINANCE, COMPLIANCE, and SUPPORT; both streams deny request without valid JWT.
+- Client disconnect and instance shutdown release the subscription and leave no hanging handler — test verifies no leak after N connections opened and closed.
+- Latency from Kafka event to connected client is < 2s in recorded hot-spot benchmark (P4 of §14).
+- Coverage ≥ 90% in `EventsService` and `RedisPubSubService`; `scripts/pre-commit.sh` green, ADR created in `docs/decisions/` and `docs/contract/contract.md` updated with SSE contract.
 
 ## Milestones
 

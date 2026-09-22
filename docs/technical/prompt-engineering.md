@@ -1,42 +1,42 @@
-# Prompt estruturado — trabalho fora do fluxo de milestone
+# Structured prompt — work outside the milestone flow
 
-O trabalho planejado é conduzido pelo PayFlow SDLC Kit (`/wiz-prd`, `/wiz-phases`, `/wiz-milestones`, `/wiz-next`, `/wiz-retro` — ver `.claude/NOTICE.md` e `/wiz-help`), que já encapsula papel, regras e critério de aceite em agentes e comandos.
+Planned work is conducted by the PayFlow SDLC Kit (`/wiz-prd`, `/wiz-phases`, `/wiz-milestones`, `/wiz-next`, `/wiz-retro` — see `.claude/NOTICE.md` and `/wiz-help`), which already encapsulates role, rules, and acceptance criteria in agents and commands.
 
-Este documento cobre o outro regime: o trabalho que **não** cabe em uma milestone planejada — correção de bug, investigação técnica pontual, decisão de arquitetura isolada, ajuste de documentação. Aqui o prompt é montado na hora, e a estrutura abaixo é o que mantém a qualidade previsível.
+This document covers the other regime: work that **does not** fit a planned milestone — bug fix, point technical investigation, isolated architecture decision, documentation adjustment. Here the prompt is assembled on the fly, and the structure below is what keeps quality predictable.
 
-## Estrutura de um prompt
+## Prompt structure
 
-| Elemento | O que é | Onde se apoia neste projeto |
+| Element | What it is | Where it is supported in this project |
 |---|---|---|
-| **System / Role** | Papel que o modelo adota. Funciona como lente de julgamento e priorização. | `CLAUDE.md` (raiz e por serviço) — camada persistente do repositório. |
-| **Context** | Documentação, dados de entrada, estado atual do sistema. | `docs/product/PRD.md`, `docs/technical/architecture/`, `.wiz/<slug>/` (PRD, fases e milestones do trabalho planejado). |
-| **Rules** | Padrões e convenções que a saída deve seguir. | `docs/technical/guidelines/` — coding-standards, dependency-injection, error-handling, logging. |
-| **Tools** | O que o modelo pode executar, não só descrever. | Bash, Read/Edit/Write, busca no repositório, MCP quando aplicável. |
-| **Output** | O que entregar, onde, e como se prova que está certo. | Condição verificável explícita: teste passando, gate de CI limpo, arquivo específico atualizado. |
-| **Exemplos (few-shot)** | 1-2 exemplos concretos quando o resultado é sensível a formato. | Formato de commit, shape de DTO — reduz variância mais que instrução em prosa. |
-| **Restrições negativas** | O que **não** fazer, explicitamente. | `CLAUDE.md`, seção "Regras de escopo". |
-| **Modos** | Plan / Debug / Ask — separar alinhamento de execução. | Plan mode para decisão estrutural; execução direta quando o caminho já está acordado. |
+| **System / Role** | Role the model adopts. Works as a lens for judgment and prioritization. | `CLAUDE.md` (root and per service) — persistent repository layer. |
+| **Context** | Documentation, input data, current system state. | `docs/product/PRD.md`, `docs/technical/architecture/`, `.wiz/<slug>/` (PRD, phases and milestones from planned work). |
+| **Rules** | Patterns and conventions the output must follow. | `docs/technical/guidelines/` — coding-standards, dependency-injection, error-handling, logging. |
+| **Tools** | What the model can execute, not just describe. | Bash, Read/Edit/Write, repository search, MCP when applicable. |
+| **Output** | What to deliver, where, and how correctness is proven. | Explicit verifiable condition: passing test, clean CI gate, specific file updated. |
+| **Examples (few-shot)** | 1-2 concrete examples when the result is format-sensitive. | Commit format, DTO shape — reduces variance more than prose instruction. |
+| **Negative constraints** | What **not** to do, explicitly. | `CLAUDE.md`, "Scope rules" section. |
+| **Modes** | Plan / Debug / Ask — separate alignment from execution. | Plan mode for structural decision; direct execution when the path is already agreed. |
 
-A ordem importa: **contexto e verificação antes do output**. Editar primeiro e verificar depois é o erro mais caro desse regime, porque produz mudança confiante em cima de premissa errada.
+Order matters: **context and verification before output**. Editing first and verifying later is the most costly mistake in this regime, because it produces confident change on top of a wrong premise.
 
-## Contexto não é automático
+## Context is not automatic
 
-O Claude Code não mantém índice vetorial da codebase. A busca é **agentic**: a cada turno o modelo decide o que procurar e aciona `grep`/`glob`/`Read`/subagentes sob demanda — recuperação guiada por raciocínio, não por similaridade pré-indexada.
+Claude Code does not maintain a vector index of the codebase. Search is **agentic**: on each turn the model decides what to look for and triggers `grep`/`glob`/`Read`/subagents on demand — retrieval guided by reasoning, not pre-indexed similarity.
 
-A consequência prática: o contexto relevante só entra se for referenciado explicitamente, ou se a busca que o modelo decidir fazer alcançá-lo. Não há garantia de que ele encontre sozinho a convenção certa. É por isso que este repositório mantém `.wiz/context/authoritative-sources.md` apontando cada milestone para as guidelines em `docs/technical/guidelines/` que a regem, e `docs/` como fonte única — os dois existem para tornar a regra encontrável, não para documentar por documentar.
+The practical consequence: relevant context only enters if explicitly referenced, or if the search the model decides to run reaches it. There is no guarantee it will find the right convention on its own. That is why this repository maintains `.wiz/context/authoritative-sources.md` pointing each milestone to the guidelines in `docs/technical/guidelines/` that govern it, and `docs/` as the single source — both exist to make the rule findable, not to document for documentation's sake.
 
-## Gestão de janela de contexto
+## Context window management
 
-Contexto longo não é gratuito. A qualidade de resposta degrada conforme o input cresce — o fenômeno conhecido como **context rot** — mesmo antes de a janela encher. A causa é distribuição de atenção: informação no meio de um contexto longo recebe menos peso que informação no início ou no fim (padrão em U; acurácia cai mais de 30% quando o dado relevante está enterrado no meio). Em sessões longas isso é causa direta de alucinação: o modelo não localiza a informação certa no ruído acumulado e preenche a lacuna.
+Long context is not free. Response quality degrades as input grows — the phenomenon known as **context rot** — even before the window fills. The cause is attention distribution: information in the middle of a long context receives less weight than information at the beginning or end (U-shaped pattern; accuracy drops more than 30% when relevant data is buried in the middle). In long sessions this is a direct cause of hallucination: the model does not locate the right information in accumulated noise and fills the gap.
 
-Prática adotada:
+Adopted practice:
 
-1. **Monitorar o tamanho da janela** ao longo da sessão (`/context`), sem deixar acumular até a compactação forçada.
-2. **Uma sessão por tarefa** — contexto de uma tarefa anterior é ruído para a próxima.
-3. **Re-referenciar os artefatos ao abrir sessão nova** (`CLAUDE.md`, `.wiz/<slug>/phases/`, guidelines) em vez de confiar em memória de conversa. Se a decisão não está em arquivo, ela não existe para a sessão seguinte — é por isso que decisão arquitetural vira ADR, e não fica combinada no chat.
-4. **Delegar trabalho de alto volume e baixa retenção a subagentes** — o subagente roda em janela própria, faz a leitura pesada e devolve só a conclusão; o volume não contamina a sessão principal.
+1. **Monitor window size** throughout the session (`/context`), without letting it accumulate until forced compaction.
+2. **One session per task** — context from a previous task is noise for the next.
+3. **Re-reference artifacts when opening a new session** (`CLAUDE.md`, `.wiz/<slug>/phases/`, guidelines) instead of trusting conversation memory. If the decision is not in a file, it does not exist for the next session — that is why an architectural decision becomes an ADR, and is not left as an agreement in chat.
+4. **Delegate high-volume, low-retention work to subagents** — the subagent runs in its own window, does the heavy reading and returns only the conclusion; the volume does not contaminate the main session.
 
-## Fontes
+## Sources
 
 - [Context Rot: Why LLMs Degrade as Context Grows](https://www.morphllm.com/context-rot)
 - [Context rot explained (& how to prevent it) — Redis](https://redis.io/blog/context-rot/)

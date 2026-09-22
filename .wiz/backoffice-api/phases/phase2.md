@@ -1,4 +1,4 @@
-# Phase 2: Kernel HTTP — Erros Tipados, Validação, Masking de PII e Borda Segura
+# Phase 2: HTTP Kernel — Typed Errors, Validation, PII Masking, and Secure Edge
 
 **Duration**: ~3 days (22 milestones @ 1h each)
 **Dependencies**: Phase 1
@@ -6,485 +6,485 @@
 
 ## Goal
 
-Construir a camada transversal (`src/common/`) que todo endpoint das fases seguintes vai herdar, de forma que nenhuma feature precise reimplementar erro, validação, masking ou cabeçalho de segurança — e que nenhum endpoint futuro possa escapar desses controles.
+Build the cross-cutting layer (`src/common/`) that every endpoint in subsequent phases will inherit, so no feature needs to reimplement error handling, validation, masking, or security headers — and no future endpoint can bypass these controls.
 
-Entregas principais:
-- Hierarquia `DomainError` com `code` estável (contrato público, ver `docs/technical/guidelines/error-handling.md`) e `DomainExceptionFilter` como único ponto de tradução para status HTTP; `AllExceptionsFilter` para falha técnica retornando 500 genérico sem stack trace.
-- `ValidationPipe` global com `whitelist`, `forbidNonWhitelisted` e `transform`; DTOs de entrada sempre validados com `class-validator`.
-- `LoggingInterceptor` propagando `correlationId`/`request_id` e as tags obrigatórias (`tenant_id`, `organization_id`, `user_id`, `trace_id`) para logs e traces.
-- `MaskingInterceptor` global de responses e masking de PII em log (CPF `***.***.789-01`, email `c***@example.com`, telefone `***4321`).
-- Helmet.js com configuração OWASP (CSP, HSTS, X-Frame-Options), CORS restrito a `FRONTEND_URL`, `ThrottlerModule` global (100 req/min).
-- `PaginationDto` / `PaginatedResponseDto` compartilhados (default 20, max 100) e `BaseEntity`.
-- Swagger/OpenAPI auto-gerado por decorators, com o formato de erro do `docs/contract/contract.md` documentado.
-- Convenção de prefixo `/api` e bootstrap consolidado em `main.ts`.
+Main deliverables:
+- `DomainError` hierarchy with stable `code` (public contract; see `docs/technical/guidelines/error-handling.md`) and `DomainExceptionFilter` as the single point of translation to HTTP status; `AllExceptionsFilter` for technical failures returning a generic 500 without stack trace.
+- Global `ValidationPipe` with `whitelist`, `forbidNonWhitelisted`, and `transform`; input DTOs always validated with `class-validator`.
+- `LoggingInterceptor` propagating `correlationId`/`request_id` and the mandatory tags (`tenant_id`, `organization_id`, `user_id`, `trace_id`) to logs and traces.
+- Global response `MaskingInterceptor` and PII masking in logs (CPF `***.***.789-01`, email `c***@example.com`, phone `***4321`).
+- Helmet.js with OWASP configuration (CSP, HSTS, X-Frame-Options), CORS restricted to `FRONTEND_URL`, global `ThrottlerModule` (100 req/min).
+- Shared `PaginationDto` / `PaginatedResponseDto` (default 20, max 100) and `BaseEntity`.
+- Swagger/OpenAPI auto-generated via decorators, with the error format from `docs/contract/contract.md` documented.
+- `/api` prefix convention and consolidated bootstrap in `main.ts`.
 
 ## Phase Acceptance Criteria
 
-- Lançar um `DomainError` de qualquer service produz o envelope `{ error: { code, message, correlationId } }` do `docs/contract/contract.md`, com o mapeamento para HTTP em um único filtro — verificado por teste e2e.
-- Uma exceção técnica (ex: banco indisponível simulado) retorna 500 genérico, sem stack trace nem string de conexão no corpo da resposta, e gera log `error` com stack trace apenas no log interno.
-- Payload com campo não declarado no DTO é rejeitado com 400 (`forbidNonWhitelisted`), coberto por teste.
-- Resposta contendo CPF, email ou telefone sai mascarada pelo `MaskingInterceptor`; teste unitário cobre os três formatos de máscara e o caso de campo ausente.
-- Nenhum log emitido durante uma requisição autenticada ou anônima contém PII em claro — teste de integração inspeciona o transporte de log.
-- Helmet, CORS restrito e Throttler estão ativos globalmente; teste e2e prova 429 após estourar o limite e prova a presença dos headers de segurança.
-- Swagger disponível em ambiente não-produtivo, com todos os DTOs comuns e o schema de erro documentados.
-- Cobertura ≥ 90% em filtros, interceptors e pipes que carregam regra; `scripts/pre-commit.sh` verde.
+- Throwing a `DomainError` from any service produces the `{ error: { code, message, correlationId } }` envelope from `docs/contract/contract.md`, with HTTP mapping in a single filter — verified by e2e test.
+- A technical exception (e.g. simulated database unavailable) returns a generic 500, with no stack trace or connection string in the response body, and emits an `error`-level log with stack trace only in the internal log.
+- A payload with a field not declared in the DTO is rejected with 400 (`forbidNonWhitelisted`), covered by test.
+- A response containing CPF, email, or phone is masked by the `MaskingInterceptor`; unit test covers the three mask formats and the absent-field case.
+- No log emitted during an authenticated or anonymous request contains plaintext PII — integration test inspects the log transport.
+- Helmet, restricted CORS, and Throttler are active globally; e2e test proves 429 after exceeding the limit and proves the presence of security headers.
+- Swagger available in non-production environments, with all common DTOs and the error schema documented.
+- Coverage ≥ 90% on filters, interceptors, and pipes that carry rules; `scripts/pre-commit.sh` green.
 
 ## Milestones
 
 <!-- Milestones appended by /wiz-milestones -->
-### P02M01: Criar a estrutura de `src/common/` e o `CommonModule`
+### P02M01: Create the `src/common/` structure and `CommonModule`
 
 **Status:** 🚧 TODO
 **ID:** P02M01
 
 **Goal**
 
-Criar o esqueleto de diretórios de `src/common/` conforme a §9 do PRD (`decorators/`, `guards/`, `interceptors/`, `filters/`, `interfaces/`, `dto/`, `entities/`, `services/`, `errors/`) e o `CommonModule` que centraliza o registro dos providers globais desta fase.
+Create the `src/common/` directory skeleton per PRD §9 (`decorators/`, `guards/`, `interceptors/`, `filters/`, `interfaces/`, `dto/`, `entities/`, `services/`, `errors/`) and the `CommonModule` that centralizes registration of this phase's global providers.
 
 **Acceptance Criteria**
 
-- [ ] Diretórios de `src/common/` criados exatamente com os nomes da §9 do PRD, acrescidos de `errors/`
-- [ ] `src/common/common.module.ts` criado como `@Global()` e importado por `AppModule`
-- [ ] `CommonModule` compila sem provider órfão e sem import circular
-- [ ] Barrel `index.ts` por subdiretório, sem reexportar símbolo inexistente
-- [ ] Nenhum diretório vazio deixado no commit (todo diretório tem ao menos o barrel ou um arquivo real)
-- [ ] `npm run lint` e `npm test` passam sem erro, falha ou teste pulado
+- [ ] `src/common/` directories created exactly with the names from PRD §9, plus `errors/`
+- [ ] `src/common/common.module.ts` created as `@Global()` and imported by `AppModule`
+- [ ] `CommonModule` compiles with no orphan provider and no circular import
+- [ ] Barrel `index.ts` per subdirectory, without re-exporting nonexistent symbols
+- [ ] No empty directories left in the commit (every directory has at least a barrel or a real file)
+- [ ] `npm run lint` and `npm test` pass with no error, failure, or skipped test
 
 ---
 
-### P02M02: Definir a classe base `DomainError` e o catálogo de códigos estáveis
+### P02M02: Define the base `DomainError` class and stable code catalog
 
 **Status:** 🚧 TODO
 **ID:** P02M02
 
 **Goal**
 
-Implementar `src/common/errors/domain-error.ts` com a classe base abstrata `DomainError` e o catálogo de códigos de erro estáveis, tratando o `code` como contrato público conforme `docs/technical/guidelines/error-handling.md` e `docs/contract/contract.md`.
+Implement `src/common/errors/domain-error.ts` with the abstract base class `DomainError` and the stable error code catalog, treating `code` as a public contract per `docs/technical/guidelines/error-handling.md` and `docs/contract/contract.md`.
 
 **Acceptance Criteria**
 
-- [ ] `DomainError` é uma classe abstrata que estende `Error`, expõe `readonly code: string` e aceita `message` e um `details?` opcional
-- [ ] `name` da instância é o nome da subclasse e o stack trace é capturado corretamente (`Error.captureStackTrace` / `Object.setPrototypeOf`)
-- [ ] Catálogo de códigos declarado como objeto `as const` (ex.: `ERROR_CODES`) com tipo derivado, em arquivo próprio — nenhum código de erro em string literal solta
-- [ ] Catálogo inclui, no mínimo, `TRANSACTION_NOT_FOUND` e `INVALID_RECONCILIATION_TRANSITION` citados na guideline
-- [ ] Comentário no arquivo declara explicitamente que alterar um `code` existente é breaking change de contrato e exige versionamento da API
-- [ ] `npm run lint` e `npm test` passam sem erro, falha ou teste pulado
+- [ ] `DomainError` is an abstract class extending `Error`, exposes `readonly code: string`, and accepts `message` and an optional `details?`
+- [ ] Instance `name` is the subclass name and the stack trace is captured correctly (`Error.captureStackTrace` / `Object.setPrototypeOf`)
+- [ ] Code catalog declared as an `as const` object (e.g. `ERROR_CODES`) with a derived type, in its own file — no loose string literal error codes
+- [ ] Catalog includes, at minimum, `TRANSACTION_NOT_FOUND` and `INVALID_RECONCILIATION_TRANSITION` cited in the guideline
+- [ ] Comment in the file explicitly states that changing an existing `code` is a contract breaking change and requires API versioning
+- [ ] `npm run lint` and `npm test` pass with no error, failure, or skipped test
 
 ---
 
-### P02M03: Criar as subclasses tipadas de `DomainError` e o mapa código → status HTTP
+### P02M03: Create typed `DomainError` subclasses and the code → HTTP status map
 
 **Status:** 🚧 TODO
 **ID:** P02M03
 
 **Goal**
 
-Implementar as subclasses tipadas de `DomainError` por categoria semântica (não encontrado, entrada inválida, conflito de estado, não autorizado, proibido) e o mapa único que traduz cada categoria para o status HTTP correspondente, com testes unitários.
+Implement typed `DomainError` subclasses by semantic category (not found, invalid input, state conflict, unauthorized, forbidden) and the single map that translates each category to the corresponding HTTP status, with unit tests.
 
 **Acceptance Criteria**
 
-- [ ] Subclasses criadas cobrindo, no mínimo, os casos 404, 400/422, 409, 401 e 403, cada uma recebendo um `code` do catálogo
-- [ ] O mapeamento categoria → status HTTP vive em um único módulo exportado, sem `switch` duplicado em outro arquivo
-- [ ] O mapa tem fallback explícito e determinístico para categoria desconhecida (nunca `undefined` chegando ao filtro)
-- [ ] Teste unitário verifica, para cada subclasse, o `code`, a categoria e o status HTTP resolvido
-- [ ] Teste unitário prova que `instanceof DomainError` é verdadeiro em todas as subclasses (herança preservada após transpilação)
-- [ ] Cobertura ≥ 90% nos arquivos de `src/common/errors/`
-- [ ] `npm run lint` e `npm test` passam sem erro, falha ou teste pulado
+- [ ] Subclasses created covering, at minimum, 404, 400/422, 409, 401, and 403 cases, each receiving a `code` from the catalog
+- [ ] Category → HTTP status mapping lives in a single exported module, with no duplicated `switch` in another file
+- [ ] Map has an explicit, deterministic fallback for unknown category (never `undefined` reaching the filter)
+- [ ] Unit test verifies, for each subclass, the `code`, category, and resolved HTTP status
+- [ ] Unit test proves that `instanceof DomainError` is true for all subclasses (inheritance preserved after transpilation)
+- [ ] Coverage ≥ 90% in `src/common/errors/` files
+- [ ] `npm run lint` and `npm test` pass with no error, failure, or skipped test
 
 ---
 
-### P02M04: Implementar o `DomainExceptionFilter` com o envelope de erro do contrato
+### P02M04: Implement `DomainExceptionFilter` with the contract error envelope
 
 **Status:** 🚧 TODO
 **ID:** P02M04
 
 **Goal**
 
-Implementar o `DomainExceptionFilter` como o único ponto de tradução de `DomainError` para resposta HTTP, produzindo exatamente o envelope `{ error: { code, message, correlationId } }` de `docs/contract/contract.md`, com testes unitários.
+Implement `DomainExceptionFilter` as the single point of translation from `DomainError` to HTTP response, producing exactly the `{ error: { code, message, correlationId } }` envelope from `docs/contract/contract.md`, with unit tests.
 
 **Acceptance Criteria**
 
-- [ ] `@Catch(DomainError)` aplicado; o filtro resolve o status HTTP exclusivamente pelo mapa do P02M03
-- [ ] Resposta serializada é exatamente `{ error: { code, message, correlationId } }` — sem campos extras, sem `statusCode` duplicado no corpo
-- [ ] `correlationId` é lido do contexto da requisição; ausência de contexto não quebra o filtro (gera valor de fallback e loga `warn`)
-- [ ] Erro de negócio é logado em nível `warn` (não `error`), com `code` e `correlationId`, sem stack trace
-- [ ] Teste unitário cobre: cada categoria de erro, presença e ausência de `correlationId`, e a forma exata do corpo da resposta
-- [ ] Nenhum controller do serviço traduz `DomainError` para status HTTP por conta própria — verificado por inspeção/grep
-- [ ] `npm run lint` e `npm test` passam sem erro, falha ou teste pulado
+- [ ] `@Catch(DomainError)` applied; filter resolves HTTP status exclusively via the P02M03 map
+- [ ] Serialized response is exactly `{ error: { code, message, correlationId } }` — no extra fields, no duplicated `statusCode` in the body
+- [ ] `correlationId` is read from the request context; missing context does not break the filter (generates fallback value and logs `warn`)
+- [ ] Business error is logged at `warn` level (not `error`), with `code` and `correlationId`, without stack trace
+- [ ] Unit test covers: each error category, presence and absence of `correlationId`, and the exact response body shape
+- [ ] No service controller translates `DomainError` to HTTP status on its own — verified by inspection/grep
+- [ ] `npm run lint` and `npm test` pass with no error, failure, or skipped test
 
 ---
 
-### P02M05: Implementar o `AllExceptionsFilter` com 500 genérico e sem vazamento
+### P02M05: Implement `AllExceptionsFilter` with generic 500 and no leakage
 
 **Status:** 🚧 TODO
 **ID:** P02M05
 
 **Goal**
 
-Implementar o `AllExceptionsFilter` para falha técnica, retornando 500 com corpo genérico (sem stack trace, sem mensagem de driver, sem string de conexão) e registrando o erro completo apenas no log interno em nível `error`.
+Implement `AllExceptionsFilter` for technical failure, returning 500 with a generic body (no stack trace, no driver message, no connection string) and recording the full error only in the internal log at `error` level.
 
 **Acceptance Criteria**
 
-- [ ] `@Catch()` sem argumento; delega para o comportamento nativo do Nest quando a exceção já é `HttpException` de 4xx conhecida
-- [ ] Corpo da resposta 500 usa o mesmo envelope do contrato, com `code` genérico (ex.: `INTERNAL_ERROR`) e mensagem fixa que não deriva da exceção original
-- [ ] Log em nível `error` contém a mensagem original, o stack trace e o `correlationId` — e é o único lugar onde o stack aparece
-- [ ] Teste unitário prova que uma exceção contendo string de conexão (`postgres://user:pass@host/db`) não expõe nenhum trecho dela no corpo da resposta
-- [ ] Teste unitário prova que o corpo da resposta não contém a substring `at ` de stack trace nem o nome da classe da exceção original
-- [ ] Cobertura ≥ 90% no arquivo do filtro
-- [ ] `npm run lint` e `npm test` passam sem erro, falha ou teste pulado
+- [ ] `@Catch()` with no argument; delegates to Nest native behavior when the exception is already a known 4xx `HttpException`
+- [ ] 500 response body uses the same contract envelope, with a generic `code` (e.g. `INTERNAL_ERROR`) and a fixed message that does not derive from the original exception
+- [ ] `error`-level log contains the original message, stack trace, and `correlationId` — and is the only place where the stack appears
+- [ ] Unit test proves that an exception containing a connection string (`postgres://user:pass@host/db`) exposes none of it in the response body
+- [ ] Unit test proves that the response body does not contain the stack trace substring `at ` nor the original exception class name
+- [ ] Coverage ≥ 90% in the filter file
+- [ ] `npm run lint` and `npm test` pass with no error, failure, or skipped test
 
 ---
 
-### P02M06: Registrar os filtros globalmente e fixar a ordem de precedência
+### P02M06: Register filters globally and fix precedence order
 
 **Status:** 🚧 TODO
 **ID:** P02M06
 
 **Goal**
 
-Registrar `DomainExceptionFilter` e `AllExceptionsFilter` como filtros globais via `APP_FILTER` no `CommonModule`, garantindo que o filtro específico tenha precedência sobre o catch-all, e provar o comportamento com teste e2e.
+Register `DomainExceptionFilter` and `AllExceptionsFilter` as global filters via `APP_FILTER` in `CommonModule`, ensuring the specific filter takes precedence over the catch-all, and prove the behavior with e2e test.
 
 **Acceptance Criteria**
 
-- [ ] Ambos os filtros registrados por `APP_FILTER` (injetáveis, com logger injetado por DI — nunca instanciados com `new` no `main.ts`)
-- [ ] A ordem de registro garante que `DomainError` cai no `DomainExceptionFilter`, não no catch-all
-- [ ] Teste e2e com controller de fixture: rota que lança `DomainError` retorna o status mapeado e o envelope do contrato
-- [ ] Teste e2e com controller de fixture: rota que lança erro técnico genérico retorna 500 genérico
-- [ ] Teste e2e prova que ambos os corpos carregam o mesmo `correlationId` enviado no header da requisição
-- [ ] Controllers de fixture ficam restritos ao diretório de teste, fora do bundle de produção
-- [ ] `npm run lint`, `npm test` e `npm run test:e2e` passam sem erro, falha ou teste pulado
+- [ ] Both filters registered via `APP_FILTER` (injectable, with logger injected via DI — never instantiated with `new` in `main.ts`)
+- [ ] Registration order ensures `DomainError` hits `DomainExceptionFilter`, not the catch-all
+- [ ] E2e test with fixture controller: route that throws `DomainError` returns mapped status and contract envelope
+- [ ] E2e test with fixture controller: route that throws a generic technical error returns generic 500
+- [ ] E2e test proves both bodies carry the same `correlationId` sent in the request header
+- [ ] Fixture controllers remain restricted to the test directory, outside the production bundle
+- [ ] `npm run lint`, `npm test`, and `npm run test:e2e` pass with no error, failure, or skipped test
 
 ---
-### P02M07: Configurar o `ValidationPipe` global e o `exceptionFactory` no envelope
+### P02M07: Configure global `ValidationPipe` and `exceptionFactory` in the envelope
 
 **Status:** 🚧 TODO
 **ID:** P02M07
 
 **Goal**
 
-Registrar o `ValidationPipe` global com `whitelist`, `forbidNonWhitelisted` e `transform` ativos, e um `exceptionFactory` que converte a falha de validação em um `DomainError` tipado, para que a resposta 400 saia pelo mesmo envelope de erro do contrato.
+Register the global `ValidationPipe` with `whitelist`, `forbidNonWhitelisted`, and `transform` enabled, and an `exceptionFactory` that converts validation failure into a typed `DomainError`, so the 400 response goes through the same contract error envelope.
 
 **Acceptance Criteria**
 
-- [ ] `ValidationPipe` registrado via `APP_PIPE` com `{ whitelist: true, forbidNonWhitelisted: true, transform: true, transformOptions: { enableImplicitConversion: false } }`
-- [ ] `enableImplicitConversion` desativado e a conversão de tipo feita por `@Type()` explícito nos DTOs, para não mascarar payload inválido
-- [ ] `exceptionFactory` monta um `DomainError` de validação com `code` estável (ex.: `VALIDATION_ERROR`) e agrega os campos inválidos em `details`
-- [ ] A resposta de validação segue o envelope `{ error: { code, message, correlationId } }`, com o detalhamento por campo em chave dedicada dentro de `error`
-- [ ] Mensagens de validação estão em inglês, conforme a política de idioma de `docs/technical/guidelines/coding-standards.md`
-- [ ] Teste unitário do `exceptionFactory` cobre erro em campo simples, campo aninhado e múltiplos campos
-- [ ] `npm run lint` e `npm test` passam sem erro, falha ou teste pulado
+- [ ] `ValidationPipe` registered via `APP_PIPE` with `{ whitelist: true, forbidNonWhitelisted: true, transform: true, transformOptions: { enableImplicitConversion: false } }`
+- [ ] `enableImplicitConversion` disabled and type conversion done via explicit `@Type()` on DTOs, to avoid masking invalid payload
+- [ ] `exceptionFactory` builds a validation `DomainError` with stable `code` (e.g. `VALIDATION_ERROR`) and aggregates invalid fields in `details`
+- [ ] Validation response follows the `{ error: { code, message, correlationId } }` envelope, with per-field detail in a dedicated key within `error`
+- [ ] Validation messages are in English, per the language policy in `docs/technical/guidelines/coding-standards.md`
+- [ ] Unit test of `exceptionFactory` covers simple field error, nested field error, and multiple fields
+- [ ] `npm run lint` and `npm test` pass with no error, failure, or skipped test
 
 ---
 
-### P02M08: Testar a validação de entrada ponta a ponta
+### P02M08: Test input validation end to end
 
 **Status:** 🚧 TODO
 **ID:** P02M08
 
 **Goal**
 
-Escrever os testes e2e que provam o comportamento do `ValidationPipe` global sobre um DTO de fixture, cobrindo rejeição de campo não declarado, remoção por whitelist, coerção por `transform` e caminho de sucesso.
+Write e2e tests that prove global `ValidationPipe` behavior over a fixture DTO, covering rejection of undeclared fields, whitelist removal, `transform` coercion, and success path.
 
 **Acceptance Criteria**
 
-- [ ] Teste e2e: payload com campo não declarado no DTO retorna 400 com o `code` de validação (efeito de `forbidNonWhitelisted`)
-- [ ] Teste e2e: payload com tipo errado em campo declarado retorna 400 e nomeia o campo no detalhamento
-- [ ] Teste e2e: payload válido com query string numérica chega ao handler já convertido pelo `transform` (`typeof === 'number'`)
-- [ ] Teste e2e: payload válido retorna 2xx e o corpo esperado
-- [ ] Teste e2e prova que o corpo do 400 não ecoa o valor bruto rejeitado quando ele é um campo de PII
-- [ ] `npm run lint`, `npm test` e `npm run test:e2e` passam sem erro, falha ou teste pulado
+- [ ] E2e test: payload with field not declared in DTO returns 400 with validation `code` (`forbidNonWhitelisted` effect)
+- [ ] E2e test: payload with wrong type on declared field returns 400 and names the field in the detail
+- [ ] E2e test: valid payload with numeric query string reaches handler already converted by `transform` (`typeof === 'number'`)
+- [ ] E2e test: valid payload returns 2xx and expected body
+- [ ] E2e test proves 400 body does not echo the raw rejected value when it is a PII field
+- [ ] `npm run lint`, `npm test`, and `npm run test:e2e` pass with no error, failure, or skipped test
 
 ---
 
-### P02M09: Implementar o `RequestContextService` e o middleware de `correlationId`
+### P02M09: Implement `RequestContextService` and `correlationId` middleware
 
 **Status:** 🚧 TODO
 **ID:** P02M09
 
 **Goal**
 
-Criar o contexto por requisição baseado em `AsyncLocalStorage` (`src/common/services/`) e o middleware que resolve o `correlationId`/`request_id` — reaproveitando o header recebido ou gerando um UUID novo — e o disponibiliza para logs, filtros e interceptors sem passar parâmetro em cadeia.
+Create per-request context based on `AsyncLocalStorage` (`src/common/services/`) and middleware that resolves `correlationId`/`request_id` — reusing the incoming header or generating a new UUID — and makes it available to logs, filters, and interceptors without chaining parameters.
 
 **Acceptance Criteria**
 
-- [ ] `RequestContextService` implementado sobre `AsyncLocalStorage`, exposto por interface/token conforme `docs/technical/guidelines/dependency-injection.md`
-- [ ] Middleware lê `x-correlation-id` (ou `x-request-id`) da requisição e gera UUID v4 quando ausente
-- [ ] O `correlationId` resolvido é devolvido no header da resposta, permitindo ao cliente correlacionar o incidente
-- [ ] O contexto expõe `correlationId`, `request_id`, `tenant_id`, `organization_id`, `user_id` e `trace_id`, com os campos de identidade opcionais nesta fase (preenchidos pela Phase 3)
-- [ ] Ler o contexto fora de uma requisição retorna `undefined` de forma segura, sem lançar
-- [ ] Escopo do provider permanece singleton (`DEFAULT`); nenhum provider `REQUEST` introduzido
-- [ ] `npm run lint` e `npm test` passam sem erro, falha ou teste pulado
+- [ ] `RequestContextService` implemented on `AsyncLocalStorage`, exposed via interface/token per `docs/technical/guidelines/dependency-injection.md`
+- [ ] Middleware reads `x-correlation-id` (or `x-request-id`) from the request and generates UUID v4 when absent
+- [ ] Resolved `correlationId` is returned in the response header, allowing the client to correlate the incident
+- [ ] Context exposes `correlationId`, `request_id`, `tenant_id`, `organization_id`, `user_id`, and `trace_id`, with identity fields optional in this phase (filled by Phase 3)
+- [ ] Reading context outside a request returns `undefined` safely, without throwing
+- [ ] Provider scope remains singleton (`DEFAULT`); no `REQUEST` provider introduced
+- [ ] `npm run lint` and `npm test` pass with no error, failure, or skipped test
 
 ---
 
-### P02M10: Implementar o `LoggingInterceptor` com as tags obrigatórias
+### P02M10: Implement `LoggingInterceptor` with mandatory tags
 
 **Status:** 🚧 TODO
 **ID:** P02M10
 
 **Goal**
 
-Implementar o `LoggingInterceptor` global que registra início e fim de cada requisição em JSON estruturado, carregando `correlationId` e as tags obrigatórias `tenant_id`, `organization_id`, `user_id`, `request_id` e `trace_id` da §7 do PRD.
+Implement the global `LoggingInterceptor` that logs start and end of each request in structured JSON, carrying `correlationId` and the mandatory tags `tenant_id`, `organization_id`, `user_id`, `request_id`, and `trace_id` from PRD §7.
 
 **Acceptance Criteria**
 
-- [ ] Interceptor registrado via `APP_INTERCEPTOR` no `CommonModule`, com o logger Winston injetado por interface/token
-- [ ] Log de conclusão inclui método, rota, status HTTP e duração em milissegundos
-- [ ] As cinco tags obrigatórias estão presentes em todo log emitido no ciclo da requisição, com valor `null` explícito quando ainda não disponível — nunca chave ausente
-- [ ] `trace_id` é obtido do `dd-trace-js` quando há span ativo, sem quebrar quando o tracer está desabilitado em teste
-- [ ] Nível `info` para 2xx/3xx, `warn` para 4xx e `error` para 5xx, conforme `docs/technical/guidelines/logging.md`
-- [ ] Corpo de requisição e de resposta não são logados em nenhum nível
-- [ ] `npm run lint` e `npm test` passam sem erro, falha ou teste pulado
+- [ ] Interceptor registered via `APP_INTERCEPTOR` in `CommonModule`, with Winston logger injected via interface/token
+- [ ] Completion log includes method, route, HTTP status, and duration in milliseconds
+- [ ] All five mandatory tags are present in every log emitted in the request cycle, with explicit `null` when not yet available — never a missing key
+- [ ] `trace_id` is obtained from `dd-trace-js` when an active span exists, without breaking when the tracer is disabled in tests
+- [ ] `info` level for 2xx/3xx, `warn` for 4xx, and `error` for 5xx, per `docs/technical/guidelines/logging.md`
+- [ ] Request and response bodies are not logged at any level
+- [ ] `npm run lint` and `npm test` pass with no error, failure, or skipped test
 
 ---
 
-### P02M11: Testar a propagação de `correlationId` e as tags do `LoggingInterceptor`
+### P02M11: Test `correlationId` propagation and `LoggingInterceptor` tags
 
 **Status:** 🚧 TODO
 **ID:** P02M11
 
 **Goal**
 
-Cobrir com testes o middleware de contexto e o `LoggingInterceptor`, provando a propagação do `correlationId` ponta a ponta e a presença invariável das tags obrigatórias.
+Cover context middleware and `LoggingInterceptor` with tests, proving end-to-end `correlationId` propagation and invariant presence of mandatory tags.
 
 **Acceptance Criteria**
 
-- [ ] Teste unitário: `correlationId` recebido no header é preservado; ausente, um UUID v4 válido é gerado
-- [ ] Teste unitário: o mesmo `correlationId` aparece no log de requisição, no log de resposta e no header da resposta
-- [ ] Teste unitário verifica a presença das cinco tags obrigatórias em cada registro capturado do transporte de log
-- [ ] Teste unitário cobre a seleção de nível de log para 200, 400 e 500
-- [ ] Teste unitário prova que o contexto não vaza entre requisições concorrentes (duas execuções paralelas mantêm `correlationId` distintos)
-- [ ] Cobertura ≥ 90% no `LoggingInterceptor` e no `RequestContextService`
-- [ ] `npm run lint` e `npm test` passam sem erro, falha ou teste pulado
+- [ ] Unit test: `correlationId` received in header is preserved; when absent, a valid UUID v4 is generated
+- [ ] Unit test: the same `correlationId` appears in request log, response log, and response header
+- [ ] Unit test verifies presence of the five mandatory tags in each captured log transport record
+- [ ] Unit test covers log level selection for 200, 400, and 500
+- [ ] Unit test proves context does not leak between concurrent requests (two parallel executions keep distinct `correlationId` values)
+- [ ] Coverage ≥ 90% on `LoggingInterceptor` and `RequestContextService`
+- [ ] `npm run lint` and `npm test` pass with no error, failure, or skipped test
 
 ---
 
-### P02M12: Implementar os utilitários de masking de PII
+### P02M12: Implement PII masking utilities
 
 **Status:** 🚧 TODO
 **ID:** P02M12
 
 **Goal**
 
-Implementar as funções puras de masking de CPF, email e telefone com o formato exato definido na §7 do PRD, junto com o teste unitário exaustivo de cada formato e dos casos de borda.
+Implement pure masking functions for CPF, email, and phone with the exact format defined in PRD §7, along with exhaustive unit tests for each format and edge cases.
 
 **Acceptance Criteria**
 
-- [ ] `maskCpf` produz `***.***.789-01` a partir de CPF com e sem pontuação
-- [ ] `maskEmail` produz `c***@example.com`, preservando o primeiro caractere do local part e o domínio íntegro
-- [ ] `maskPhone` produz `***4321`, preservando os quatro últimos dígitos independentemente de formatação e DDI
-- [ ] Cada função é pura, sem I/O e sem dependência de framework, e retorna a máscara total quando o valor é curto demais para preservar o sufixo
-- [ ] Entrada `null`, `undefined`, string vazia ou valor fora do formato esperado não lança e retorna valor mascarado seguro (nunca o valor original)
-- [ ] Teste unitário em tabela de casos cobre os três formatos, cada caso de borda acima e a idempotência (mascarar um valor já mascarado não o corrompe)
-- [ ] Cobertura de 100% nos utilitários de masking
-- [ ] `npm run lint` e `npm test` passam sem erro, falha ou teste pulado
+- [ ] `maskCpf` produces `***.***.789-01` from CPF with and without punctuation
+- [ ] `maskEmail` produces `c***@example.com`, preserving the first character of the local part and the full domain
+- [ ] `maskPhone` produces `***4321`, preserving the last four digits regardless of formatting and country code
+- [ ] Each function is pure, with no I/O and no framework dependency, and returns full mask when the value is too short to preserve the suffix
+- [ ] `null`, `undefined`, empty string, or out-of-format input does not throw and returns a safe masked value (never the original value)
+- [ ] Table-driven unit test covers the three formats, each edge case above, and idempotency (masking an already masked value does not corrupt it)
+- [ ] 100% coverage on masking utilities
+- [ ] `npm run lint` and `npm test` pass with no error, failure, or skipped test
 
 ---
-### P02M13: Implementar o `MaskingInterceptor` global de responses
+### P02M13: Implement global response `MaskingInterceptor`
 
 **Status:** 🚧 TODO
 **ID:** P02M13
 
 **Goal**
 
-Implementar o `MaskingInterceptor` global que aplica os utilitários do P02M12 sobre o corpo de resposta, identificando os campos de PII por convenção de nome e por decorator explícito, sem que cada módulo precise lembrar de mascarar.
+Implement the global `MaskingInterceptor` that applies P02M12 utilities to the response body, identifying PII fields by naming convention and explicit decorator, without each module needing to remember to mask.
 
 **Acceptance Criteria**
 
-- [ ] Interceptor registrado via `APP_INTERCEPTOR`, executando depois do handler e antes da serialização
-- [ ] Decorator `@MaskPii(type)` disponível para marcar propriedade de DTO/entity, com os tipos `cpf`, `email` e `phone`
-- [ ] Lista de nomes de campo reconhecidos por convenção (`cpf`, `document`, `email`, `phone`, `msisdn`) configurada em um único lugar
-- [ ] Percorre objetos aninhados, arrays e o campo `data` de resposta paginada, preservando a estrutura e os tipos não-PII
-- [ ] Campo ausente, `null` ou valor não-string é ignorado sem lançar
-- [ ] Profundidade máxima de travessia limitada e referência circular tratada, para não travar em payload malformado
-- [ ] `npm run lint` e `npm test` passam sem erro, falha ou teste pulado
+- [ ] Interceptor registered via `APP_INTERCEPTOR`, running after the handler and before serialization
+- [ ] `@MaskPii(type)` decorator available to mark DTO/entity property, with types `cpf`, `email`, and `phone`
+- [ ] List of field names recognized by convention (`cpf`, `document`, `email`, `phone`, `msisdn`) configured in a single place
+- [ ] Traverses nested objects, arrays, and the `data` field of paginated responses, preserving structure and non-PII types
+- [ ] Absent field, `null`, or non-string value is ignored without throwing
+- [ ] Maximum traversal depth limited and circular references handled, to avoid hanging on malformed payload
+- [ ] `npm run lint` and `npm test` pass with no error, failure, or skipped test
 
 ---
 
-### P02M14: Testar o `MaskingInterceptor` sobre payloads aninhados e coleções
+### P02M14: Test `MaskingInterceptor` on nested payloads and collections
 
 **Status:** 🚧 TODO
 **ID:** P02M14
 
 **Goal**
 
-Cobrir com testes o `MaskingInterceptor`, provando os três formatos de máscara na resposta HTTP, o comportamento em estrutura aninhada e o caso de campo ausente exigido pelos critérios da fase.
+Cover `MaskingInterceptor` with tests, proving the three mask formats in the HTTP response, behavior on nested structure, and the absent-field case required by phase criteria.
 
 **Acceptance Criteria**
 
-- [ ] Teste unitário: resposta simples contendo `cpf`, `email` e `phone` sai com as três máscaras exatas da §7 do PRD
-- [ ] Teste unitário: objeto aninhado em dois níveis e array de objetos são mascarados em todos os elementos
-- [ ] Teste unitário: campo de PII ausente no payload não gera erro nem chave nova na resposta
-- [ ] Teste unitário: campo marcado com `@MaskPii` mas de nome não convencional também é mascarado
-- [ ] Teste e2e: uma rota de fixture que devolve PII responde já mascarada através do pipeline completo
-- [ ] Cobertura ≥ 90% no `MaskingInterceptor`
-- [ ] `npm run lint`, `npm test` e `npm run test:e2e` passam sem erro, falha ou teste pulado
+- [ ] Unit test: simple response containing `cpf`, `email`, and `phone` exits with the three exact masks from PRD §7
+- [ ] Unit test: object nested two levels deep and array of objects are masked in all elements
+- [ ] Unit test: absent PII field in payload does not cause error or add a new key to the response
+- [ ] Unit test: field marked with `@MaskPii` but with non-conventional name is also masked
+- [ ] E2e test: a fixture route returning PII responds already masked through the full pipeline
+- [ ] Coverage ≥ 90% on `MaskingInterceptor`
+- [ ] `npm run lint`, `npm test`, and `npm run test:e2e` pass with no error, failure, or skipped test
 
 ---
 
-### P02M15: Aplicar masking de PII no logger Winston e testar o transporte de log
+### P02M15: Apply PII masking to Winston logger and test log transport
 
 **Status:** 🚧 TODO
 **ID:** P02M15
 
 **Goal**
 
-Adicionar um formatter de masking ao pipeline do Winston, para que nenhum log emitido durante uma requisição carregue CPF, email ou telefone em claro, e provar isso com teste de integração que inspeciona o transporte de log.
+Add a masking formatter to the Winston pipeline, so no log emitted during a request carries plaintext CPF, email, or phone, and prove this with an integration test that inspects the log transport.
 
 **Acceptance Criteria**
 
-- [ ] Formatter de masking encadeado no Winston antes do formatter JSON, aplicado tanto ao `message` quanto aos metadados estruturados
-- [ ] O formatter reaproveita os utilitários do P02M12 — nenhuma regex de máscara duplicada no código do logger
-- [ ] Segredos e credenciais (`password`, `token`, `authorization`, `secret`, `x-signature`) são redigidos por completo, conforme `docs/technical/guidelines/logging.md`
-- [ ] Teste de integração com transporte em memória: requisição carregando PII produz logs sem nenhuma ocorrência do valor original
-- [ ] Teste de integração cobre requisição anônima e requisição com contexto de usuário preenchido
-- [ ] Teste prova que o custo do formatter não altera a estrutura do log (campos obrigatórios `timestamp`, `level`, `service`, `correlationId` intactos)
-- [ ] `npm run lint` e `npm test` passam sem erro, falha ou teste pulado
+- [ ] Masking formatter chained in Winston before the JSON formatter, applied to both `message` and structured metadata
+- [ ] Formatter reuses P02M12 utilities — no duplicated masking regex in logger code
+- [ ] Secrets and credentials (`password`, `token`, `authorization`, `secret`, `x-signature`) are fully redacted, per `docs/technical/guidelines/logging.md`
+- [ ] Integration test with in-memory transport: request carrying PII produces logs with no occurrence of the original value
+- [ ] Integration test covers anonymous request and request with populated user context
+- [ ] Test proves formatter cost does not alter log structure (mandatory fields `timestamp`, `level`, `service`, `correlationId` intact)
+- [ ] `npm run lint` and `npm test` pass with no error, failure, or skipped test
 
 ---
 
-### P02M16: Configurar Helmet com perfil OWASP e CORS restrito a `FRONTEND_URL`
+### P02M16: Configure Helmet with OWASP profile and CORS restricted to `FRONTEND_URL`
 
 **Status:** 🚧 TODO
 **ID:** P02M16
 
 **Goal**
 
-Aplicar o Helmet.js com configuração OWASP (CSP, HSTS, X-Frame-Options e demais headers) e restringir o CORS exclusivamente à origem de `FRONTEND_URL`, com credenciais habilitadas para o cookie HttpOnly que a Phase 3 vai emitir.
+Apply Helmet.js with OWASP configuration (CSP, HSTS, X-Frame-Options, and other headers) and restrict CORS exclusively to the `FRONTEND_URL` origin, with credentials enabled for the HttpOnly cookie that Phase 3 will emit.
 
 **Acceptance Criteria**
 
-- [ ] Helmet habilitado no bootstrap com CSP explícita (sem `unsafe-inline` em `script-src`), HSTS com `includeSubDomains` e `X-Frame-Options: DENY`
-- [ ] `x-powered-by` removido da resposta
-- [ ] CORS aceita apenas a origem de `FRONTEND_URL`, com `credentials: true` e lista explícita de métodos e headers permitidos — nunca `origin: true` ou `*`
-- [ ] `FRONTEND_URL` é lido do módulo de configuração validado por Zod da Phase 1; ausência da variável falha o boot
-- [ ] Swagger continua carregando em ambiente não-produtivo apesar da CSP (exceção documentada e restrita à rota de docs)
-- [ ] Configuração de Helmet e CORS vive no bootstrap, não espalhada por módulos
-- [ ] `npm run lint` e `npm test` passam sem erro, falha ou teste pulado
+- [ ] Helmet enabled in bootstrap with explicit CSP (no `unsafe-inline` in `script-src`), HSTS with `includeSubDomains`, and `X-Frame-Options: DENY`
+- [ ] `x-powered-by` removed from response
+- [ ] CORS accepts only the `FRONTEND_URL` origin, with `credentials: true` and explicit list of allowed methods and headers — never `origin: true` or `*`
+- [ ] `FRONTEND_URL` is read from the Zod-validated configuration module from Phase 1; missing variable fails boot
+- [ ] Swagger still loads in non-production despite CSP (documented exception restricted to docs route)
+- [ ] Helmet and CORS configuration lives in bootstrap, not spread across modules
+- [ ] `npm run lint` and `npm test` pass with no error, failure, or skipped test
 
 ---
 
-### P02M17: Configurar o `ThrottlerModule` global e o envelope do 429
+### P02M17: Configure global `ThrottlerModule` and 429 envelope
 
 **Status:** 🚧 TODO
 **ID:** P02M17
 
 **Goal**
 
-Registrar o `ThrottlerModule` global com limite de 100 requisições por minuto e traduzir a `ThrottlerException` para o envelope de erro do contrato, mantendo um único formato de erro em toda a API.
+Register global `ThrottlerModule` with a limit of 100 requests per minute and translate `ThrottlerException` to the contract error envelope, maintaining a single error format across the API.
 
 **Acceptance Criteria**
 
-- [ ] `ThrottlerModule` configurado com `ttl` de 60 s e `limit` de 100, com ambos os valores vindos do módulo de configuração e com esse default
-- [ ] `ThrottlerGuard` registrado como guard global via `APP_GUARD`
-- [ ] `ThrottlerException` é traduzida para o envelope `{ error: { code, message, correlationId } }` com `code` estável (ex.: `RATE_LIMIT_EXCEEDED`) e status 429
-- [ ] Headers de rate limit (`Retry-After` e equivalentes) presentes na resposta 429
-- [ ] Decorator de isenção (`@SkipThrottle()`) aplicado apenas ao health check, com o motivo comentado
-- [ ] Estouro do limite gera log `warn` com `correlationId` e identificador do chamador — sem PII
-- [ ] `npm run lint` e `npm test` passam sem erro, falha ou teste pulado
+- [ ] `ThrottlerModule` configured with `ttl` of 60 s and `limit` of 100, both values from the configuration module with that default
+- [ ] `ThrottlerGuard` registered as global guard via `APP_GUARD`
+- [ ] `ThrottlerException` translated to `{ error: { code, message, correlationId } }` envelope with stable `code` (e.g. `RATE_LIMIT_EXCEEDED`) and status 429
+- [ ] Rate limit headers (`Retry-After` and equivalents) present on 429 response
+- [ ] Exemption decorator (`@SkipThrottle()`) applied only to health check, with reason commented
+- [ ] Limit exceeded generates `warn` log with `correlationId` and caller identifier — no PII
+- [ ] `npm run lint` and `npm test` pass with no error, failure, or skipped test
 
 ---
 
-### P02M18: Testar a borda segura ponta a ponta
+### P02M18: Test secure edge end to end
 
 **Status:** 🚧 TODO
 **ID:** P02M18
 
 **Goal**
 
-Escrever os testes e2e que provam que Helmet, CORS restrito e Throttler estão ativos globalmente, cobrindo o critério de aceite da fase sobre headers de segurança e retorno 429.
+Write e2e tests that prove Helmet, restricted CORS, and Throttler are active globally, covering the phase acceptance criterion on security headers and 429 response.
 
 **Acceptance Criteria**
 
-- [ ] Teste e2e verifica a presença e o valor de `Content-Security-Policy`, `Strict-Transport-Security` e `X-Frame-Options` em uma resposta qualquer
-- [ ] Teste e2e verifica que `x-powered-by` está ausente
-- [ ] Teste e2e: requisição com `Origin` diferente de `FRONTEND_URL` não recebe `Access-Control-Allow-Origin` permissivo
-- [ ] Teste e2e: estourar o limite configurado retorna 429 com o envelope de erro do contrato
-- [ ] Teste e2e prova que o health check não é bloqueado pelo throttler
-- [ ] O limite usado no teste vem de configuração reduzida no ambiente de teste, sem disparar 100 requisições reais nem `sleep` fixo
-- [ ] `npm run lint`, `npm test` e `npm run test:e2e` passam sem erro, falha ou teste pulado
+- [ ] E2e test verifies presence and value of `Content-Security-Policy`, `Strict-Transport-Security`, and `X-Frame-Options` on any response
+- [ ] E2e test verifies `x-powered-by` is absent
+- [ ] E2e test: request with `Origin` different from `FRONTEND_URL` does not receive permissive `Access-Control-Allow-Origin`
+- [ ] E2e test: exceeding configured limit returns 429 with contract error envelope
+- [ ] E2e test proves health check is not blocked by throttler
+- [ ] Limit used in test comes from reduced configuration in test environment, without firing 100 real requests or fixed `sleep`
+- [ ] `npm run lint`, `npm test`, and `npm run test:e2e` pass with no error, failure, or skipped test
 
 ---
-### P02M19: Criar `PaginationDto`, `PaginatedResponseDto` e `BaseEntity`
+### P02M19: Create `PaginationDto`, `PaginatedResponseDto`, and `BaseEntity`
 
 **Status:** 🚧 TODO
 **ID:** P02M19
 
 **Goal**
 
-Implementar os contratos compartilhados de paginação (`src/common/dto/`) com default 20 e máximo 100 itens por página, e a `BaseEntity` (`id`, `created_at`, `updated_at`) que as entidades das fases seguintes vão estender.
+Implement shared pagination contracts (`src/common/dto/`) with default 20 and maximum 100 items per page, and `BaseEntity` (`id`, `created_at`, `updated_at`) that entities in subsequent phases will extend.
 
 **Acceptance Criteria**
 
-- [ ] `PaginationDto` expõe `page` (default 1, mínimo 1) e `limit` (default 20, mínimo 1, máximo 100), validados por `class-validator` e convertidos por `@Type(() => Number)`
-- [ ] `limit` acima de 100 é rejeitado com 400 pelo `ValidationPipe` — não silenciosamente truncado
-- [ ] `PaginatedResponseDto<T>` é genérico e expõe `data: T[]` mais os metadados `page`, `limit`, `total` e `total_pages`
-- [ ] `total_pages` é derivado e correto para `total` zero, exato e não múltiplo de `limit`
-- [ ] `BaseEntity` define `id` (UUID), `created_at` e `updated_at` com as colunas TypeORM correspondentes, pronta para ser estendida
-- [ ] Teste unitário cobre os defaults, os limites de borda (0, 1, 100, 101) e o cálculo de `total_pages`
-- [ ] `npm run lint` e `npm test` passam sem erro, falha ou teste pulado
+- [ ] `PaginationDto` exposes `page` (default 1, minimum 1) and `limit` (default 20, minimum 1, maximum 100), validated by `class-validator` and converted by `@Type(() => Number)`
+- [ ] `limit` above 100 is rejected with 400 by `ValidationPipe` — not silently truncated
+- [ ] `PaginatedResponseDto<T>` is generic and exposes `data: T[]` plus metadata `page`, `limit`, `total`, and `total_pages`
+- [ ] `total_pages` is derived and correct for zero, exact, and non-multiple-of-`limit` totals
+- [ ] `BaseEntity` defines `id` (UUID), `created_at`, and `updated_at` with corresponding TypeORM columns, ready to be extended
+- [ ] Unit test covers defaults, boundary limits (0, 1, 100, 101), and `total_pages` calculation
+- [ ] `npm run lint` and `npm test` pass with no error, failure, or skipped test
 
 ---
 
-### P02M20: Configurar Swagger/OpenAPI com o schema de erro documentado
+### P02M20: Configure Swagger/OpenAPI with documented error schema
 
 **Status:** 🚧 TODO
 **ID:** P02M20
 
 **Goal**
 
-Configurar o Swagger auto-gerado por decorators, disponível apenas em ambiente não-produtivo, documentando os DTOs comuns e o envelope de erro de `docs/contract/contract.md` como resposta padrão da API.
+Configure decorator-driven auto-generated Swagger, available only in non-production environments, documenting common DTOs and the `{ error: { code, message, correlationId } }` envelope from `docs/contract/contract.md` as the API default response.
 
 **Acceptance Criteria**
 
-- [ ] `SwaggerModule` configurado no bootstrap com título, versão e descrição do serviço, servido em rota sob o prefixo `/api`
-- [ ] Swagger é montado somente quando o ambiente não é produção, verificado por teste
-- [ ] Um `ErrorResponseDto` documenta o envelope `{ error: { code, message, correlationId } }` e está registrado como schema reutilizável
-- [ ] Respostas 400, 401, 403, 404, 429 e 500 declaradas como padrão global apontando para o `ErrorResponseDto`, sem repetição por controller
-- [ ] `PaginationDto` e `PaginatedResponseDto` aparecem no schema com os limites (default 20, max 100) descritos
-- [ ] Plugin CLI do Swagger habilitado no `nest-cli.json` para inferir tipos sem poluir os DTOs de decorator redundante
-- [ ] `npm run lint`, `npm test` e `npm run test:e2e` passam sem erro, falha ou teste pulado
+- [ ] `SwaggerModule` configured in bootstrap with service title, version, and description, served on a route under the `/api` prefix
+- [ ] Swagger is mounted only when environment is not production, verified by test
+- [ ] An `ErrorResponseDto` documents the `{ error: { code, message, correlationId } }` envelope and is registered as a reusable schema
+- [ ] 400, 401, 403, 404, 429, and 500 responses declared as global default pointing to `ErrorResponseDto`, without repetition per controller
+- [ ] `PaginationDto` and `PaginatedResponseDto` appear in schema with limits (default 20, max 100) described
+- [ ] Swagger CLI plugin enabled in `nest-cli.json` to infer types without polluting DTOs with redundant decorators
+- [ ] `npm run lint`, `npm test`, and `npm run test:e2e` pass with no error, failure, or skipped test
 
 ---
 
-### P02M21: Consolidar o `main.ts` e publicar o catálogo de códigos de erro
+### P02M21: Consolidate `main.ts` and publish error code catalog
 
 **Status:** 🚧 TODO
 **ID:** P02M21
 
 **Goal**
 
-Consolidar o bootstrap em `main.ts` com o prefixo global `/api` e a ordem correta de inicialização dos controles desta fase, e registrar o catálogo de códigos de erro em `docs/contract/contract.md`, conforme a regra de não alterar contrato sem atualizar a documentação no mesmo PR.
+Consolidate bootstrap in `main.ts` with global `/api` prefix and correct initialization order for this phase's controls, and register the error code catalog in `docs/contract/contract.md`, per the rule of not changing contract without updating documentation in the same PR.
 
 **Acceptance Criteria**
 
-- [ ] `setGlobalPrefix('api')` aplicado uma única vez, com a rota de health continuando a responder em `GET /api/health`
-- [ ] Ordem de bootstrap explícita e comentada: config validada → Helmet → CORS → prefixo global → Swagger (não-produtivo) → listen
-- [ ] Filtros, pipe, guard e interceptors globais são registrados por DI no `CommonModule`, e o `main.ts` não instancia nenhum deles com `new`
-- [ ] `main.ts` não contém regra de negócio nem leitura direta de `process.env` — tudo passa pelo módulo de configuração da Phase 1
-- [ ] `docs/contract/contract.md` atualizado com o catálogo de códigos de erro do backoffice e a nota de que o `code` é contrato público versionado
-- [ ] Nenhum `console.log` remanescente no caminho de bootstrap; o boot loga em JSON estruturado
-- [ ] `npm run lint`, `npm test` e `npm run test:e2e` passam sem erro, falha ou teste pulado
+- [ ] `setGlobalPrefix('api')` applied once, with health route still responding at `GET /api/health`
+- [ ] Explicit, commented bootstrap order: validated config → Helmet → CORS → global prefix → Swagger (non-production) → listen
+- [ ] Global filters, pipe, guard, and interceptors registered via DI in `CommonModule`, and `main.ts` does not instantiate any of them with `new`
+- [ ] `main.ts` contains no business logic nor direct `process.env` reads — everything goes through Phase 1 configuration module
+- [ ] `docs/contract/contract.md` updated with backoffice error code catalog and note that `code` is versioned public contract
+- [ ] No remaining `console.log` on bootstrap path; boot logs in structured JSON
+- [ ] `npm run lint`, `npm test`, and `npm run test:e2e` pass with no error, failure, or skipped test
 
 ---
 
-### P02M22: Verificar conclusão da Phase 2
+### P02M22: Verify Phase 2 completion
 
 **Status:** 🚧 TODO
 **ID:** P02M22
 
 **Goal**
 
-Verificar que todos os requisitos da Phase 2 foram atendidos, os testes passam e a fase está pronta para sign-off antes de avançar para a Phase 3.
+Verify that all Phase 2 requirements are met, tests pass, and the phase is ready for sign-off before advancing to Phase 3.
 
 **Acceptance Criteria**
 
-- [ ] Todos os milestones anteriores da Phase 2 estão marcados como concluídos
-- [ ] `scripts/pre-commit.sh` passa verde a partir de um checkout limpo
-- [ ] Cobertura ≥ 90% em filtros, interceptors e pipes que carregam regra
-- [ ] Todos os critérios de aceite da fase (seção "Phase Acceptance Criteria") estão satisfeitos e verificados
-- [ ] Nenhum bug ou pendência aberta desta fase
-- [ ] Documentação atualizada
-- [ ] Pronto para avançar para a Phase 3
+- [ ] All previous Phase 2 milestones are marked complete
+- [ ] `scripts/pre-commit.sh` passes green from a clean checkout
+- [ ] Coverage ≥ 90% on filters, interceptors, and pipes that carry rules
+- [ ] All phase acceptance criteria ("Phase Acceptance Criteria" section) are satisfied and verified
+- [ ] No open bugs or pending items from this phase
+- [ ] Documentation updated
+- [ ] Ready to advance to Phase 3
 
 ---

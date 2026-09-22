@@ -275,7 +275,7 @@ echo ""
 ## Example Output
 
 ```
-📋 Phase Retro: Transações e Conciliação
+📋 Phase Retro: Transactions and Reconciliation
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

@@ -1,22 +1,22 @@
-# ADR-0002: Backoffice API mantém read model próprio, alimentado por eventos
+# ADR-0002: Backoffice API maintains its own read model, fed by events
 
-**Status**: Aceito
+**Status**: Accepted
 
-## Contexto
+## Context
 
-O time de operação precisa consultar transações com filtros, busca e paginação eficientes, sem impactar a performance dos serviços transacionais (cash-in/cash-out), que são otimizados para escrita de alto throughput, não para consulta ad-hoc.
+The operations team needs to query transactions with efficient filters, search, and pagination, without impacting the performance of transactional services (cash-in/cash-out), which are optimized for high-throughput writes, not ad-hoc queries.
 
-## Alternativas consideradas
+## Alternatives considered
 
-1. **Backoffice consulta diretamente o banco de cash-in/cash-out**: acopla o schema interno desses serviços à necessidade de consulta do backoffice, e qualquer mudança de schema vira uma mudança coordenada entre times.
-2. **Backoffice expõe um proxy que chama a API de cash-in/cash-out em tempo real**: evita acoplamento de schema, mas gera carga de leitura sobre serviços críticos de escrita e gera indisponibilidade em cascata.
-3. **Backoffice mantém seu próprio read model, populado de forma assíncrona a partir dos eventos de domínio publicados via Kafka**: desacopla schemas, isola carga de leitura, e o backoffice pode modelar os dados especificamente para os padrões de consulta operacional (ex: índices por período, por status, por integrador).
+1. **Backoffice queries cash-in/cash-out database directly**: couples those services' internal schema to backoffice query needs, and any schema change becomes a coordinated change across teams.
+2. **Backoffice exposes a proxy that calls cash-in/cash-out API in real time**: avoids schema coupling, but generates read load on critical write services and causes cascading unavailability.
+3. **Backoffice maintains its own read model, populated asynchronously from domain events published via Kafka**: decouples schemas, isolates read load, and the backoffice can model data specifically for operational query patterns (e.g., indexes by period, status, integrator).
 
-## Decisão
+## Decision
 
-Adotar a opção 3. `payflow-backoffice-api` consome eventos de domínio (`transaction.created`, `transaction.confirmed`, `transaction.failed`, etc.) e mantém uma tabela de leitura desnormalizada, otimizada para os casos de uso de consulta e conciliação do time de operação.
+Adopt option 3. `payflow-backoffice-api` consumes domain events (`transaction.created`, `transaction.confirmed`, `transaction.failed`, etc.) and maintains a denormalized read table optimized for the operations team's lookup and reconciliation use cases.
 
-## Consequências
+## Consequences
 
-- Prós: nenhuma pressão de leitura sobre os serviços transacionais; modelagem de dados livre para otimizar consulta; falha temporária no backoffice não afeta o fluxo de pagamento.
-- Contras: introduz *eventual consistency* — é necessário comunicar claramente na UI quando um dado pode estar alguns segundos desatualizado. Também exige lógica de reconciliação para lidar com eventos fora de ordem ou reprocessados (idempotência no consumidor).
+- Pros: no read pressure on transactional services; free data modeling to optimize queries; temporary backoffice failure does not affect the payment flow.
+- Cons: introduces *eventual consistency* — the UI must clearly communicate when data may be a few seconds stale. Also requires reconciliation logic to handle out-of-order or reprocessed events (consumer idempotency).
