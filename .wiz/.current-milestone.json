@@ -1,9 +1,9 @@
 {
   "slug": "backoffice-api",
-  "milestone_id": "P01M01",
+  "milestone_id": "P01M04",
   "phase_number": "1",
   "phase_file": ".wiz/backoffice-api/phases/phase1.md",
   "status": "complete",
-  "started_at": "2026-08-24T10:16:00Z",
-  "completed_at": "2026-08-24T10:18:30Z"
+  "started_at": "2026-08-25T14:45:00Z",
+  "completed_at": "2026-08-25T14:52:00Z"
 }

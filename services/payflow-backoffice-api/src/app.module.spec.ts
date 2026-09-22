@@ -1,5 +1,5 @@
 import { Test } from '@nestjs/testing';
-import { AppModule } from './app.module';
+import { AppModule } from '@/app.module';
 
 describe('AppModule', () => {
   it('should compile', async () => {

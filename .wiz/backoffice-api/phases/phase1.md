@@ -62,7 +62,7 @@ Create from scratch the skeleton of `services/payflow-backoffice-api` with NestJ
 
 ### P01M02: Configure TypeScript 5.6 in strict mode
 
-**Status:** 🚧 TODO
+**Status:** ✅ COMPLETE
 **ID:** P01M02
 
 **Goal**
@@ -71,17 +71,17 @@ Configure the TypeScript 5.6 compiler with `strict: true` and the build options 
 
 **Acceptance Criteria**
 
-- [ ] `tsconfig.json` with `strict: true`, `strictNullChecks`, `noImplicitAny`, `noImplicitOverride`, `forceConsistentCasingInFileNames`, `experimentalDecorators` and `emitDecoratorMetadata` enabled
-- [ ] `target` and `module` compatible with Node.js 24 (`ES2023` or higher) and `moduleResolution: node`
-- [ ] `tsconfig.build.json` excludes `test`, `**/*.spec.ts` and `dist` from the production build
-- [ ] Path alias configured for `src/` and resolved in both build and Jest
-- [ ] `npm run build` generates `dist/` with no type errors or warnings
+- [x] `tsconfig.json` com `strict: true`, `strictNullChecks`, `noImplicitAny`, `noImplicitOverride`, `forceConsistentCasingInFileNames`, `experimentalDecorators` e `emitDecoratorMetadata` habilitados
+- [x] `target` e `module` compatíveis com Node.js 24 (`ES2023` ou superior) e `moduleResolution: node`
+- [x] `tsconfig.build.json` exclui `test`, `**/*.spec.ts` e `dist` do build de produção
+- [x] Path alias configurado para `src/` e resolvido tanto no build quanto no Jest
+- [x] `npm run build` gera `dist/` sem nenhum erro ou warning de tipo
 
 ---
 
 ### P01M03: Configure ESLint 9 flat config and Prettier
 
-**Status:** 🚧 TODO
+**Status:** ✅ COMPLETE
 **ID:** P01M03
 
 **Goal**
@@ -90,18 +90,18 @@ Apply exactly the lint and format rules defined in `docs/technical/guidelines/co
 
 **Acceptance Criteria**
 
-- [ ] `eslint.config.mjs` (flat config) uses `typescript-eslint` 8 with type-aware linting pointing to `tsconfig.json`
-- [ ] Exact rules configured: `@typescript-eslint/no-explicit-any: warn`, `@typescript-eslint/explicit-function-return-type: off`, `@typescript-eslint/explicit-module-boundary-types: off`, `@typescript-eslint/no-unused-vars: error` with `argsIgnorePattern: '^_'`, `no-console: warn`, `prefer-const`/`no-var`/`object-shorthand`/`prefer-arrow-callback: error`
-- [ ] `.prettierrc` defines `singleQuote: true`, `trailingComma: "all"`, `semi: true`, `printWidth: 100`, `tabWidth: 2`
-- [ ] ESLint and Prettier do not conflict (`eslint-config-prettier` applied last in the chain)
-- [ ] `npm run lint` and `npm run format:check` pass green on existing code
-- [ ] Verified that a temporary file with `var x = 1` makes `npm run lint` exit with a non-zero code, and the file is removed afterward
+- [x] `eslint.config.mjs` (flat config) usa `typescript-eslint` 8 com type-aware linting apontando para `tsconfig.json`
+- [x] Regras exatas configuradas: `@typescript-eslint/no-explicit-any: warn`, `@typescript-eslint/explicit-function-return-type: off`, `@typescript-eslint/explicit-module-boundary-types: off`, `@typescript-eslint/no-unused-vars: error` com `argsIgnorePattern: '^_'`, `no-console: warn`, `prefer-const`/`no-var`/`object-shorthand`/`prefer-arrow-callback: error`
+- [x] `.prettierrc` define `singleQuote: true`, `trailingComma: "all"`, `semi: true`, `printWidth: 100`, `tabWidth: 2`
+- [x] ESLint e Prettier não conflitam (`eslint-config-prettier` aplicado por último na cadeia)
+- [x] `npm run lint` e `npm run format:check` passam verde no código existente
+- [x] Verificado que um arquivo temporário com `var x = 1` faz `npm run lint` sair com código diferente de zero, e o arquivo é removido em seguida
 
 ---
 
 ### P01M04: Configure Husky, commitlint and lint-staged
 
-**Status:** 🚧 TODO
+**Status:** ✅ COMPLETE
 **ID:** P01M04
 
 **Goal**
@@ -110,11 +110,11 @@ Enforce Conventional Commits at commit time and run lint/format only on staged f
 
 **Acceptance Criteria**
 
-- [ ] `husky` installed with `commit-msg` hook running `commitlint --edit`
-- [ ] `commitlint.config.js` extends `@commitlint/config-conventional` and requires scope in parentheses referencing the service
-- [ ] `pre-commit` hook runs `lint-staged` with `eslint --fix` and `prettier --write` on `*.ts`
-- [ ] Verified that message `atualiza coisas` is rejected and `feat(backoffice-api): add scaffold` is accepted
-- [ ] Hook activation instructions documented in the service README
+- [x] `husky` instalado com hook `commit-msg` executando `commitlint --edit`
+- [x] `commitlint.config.js` estende `@commitlint/config-conventional` e exige escopo entre parênteses referenciando o serviço
+- [x] Hook `pre-commit` executa `lint-staged` com `eslint --fix` e `prettier --write` em `*.ts`
+- [x] Verificado que a mensagem `atualiza coisas` é rejeitada e `feat(backoffice-api): add scaffold` é aceita
+- [x] Instruções de ativação dos hooks documentadas no README do serviço
 
 ---
 
